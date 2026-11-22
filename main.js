@@ -62,6 +62,82 @@ async function hermesStatus() {
   }
 }
 
+/* Sessions réelles du gateway (doc : GET /api/sessions → { sessions: [SessionRow] }).
+ * Lectures tolérantes : la réponse peut être {sessions:[…]} ou un tableau nu,
+ * et chaque rangée suit au plus près le schéma SessionRow du serveur. */
+async function hermesSessions() {
+  try {
+    const res = await hermesFetch('/api/sessions', { method: 'GET' });
+    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data && data.sessions) || [];
+    const sessions = rows.filter(Boolean).map(function (s) {
+      return {
+        id: s.session_id || s.id || '',
+        title: s.display_title || s.title || 'Session sans titre',
+        workspace: s.workspace || '',
+        projectId: s.project_id || null,
+        model: s.model || '',
+        messageCount: s.message_count || 0,
+        updated: s.last_message_at || s.updated_at || 0,
+        pinned: !!s.pinned,
+        streaming: !!(s.is_streaming || s.active_stream_id),
+        attention: !!s.attention,
+        readOnly: !!s.read_only,
+        cli: !!s.is_cli_session,
+        contextPct: s.window_usage_percent || 0
+      };
+    });
+    return { ok: true, sessions: sessions };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
+/* Projets Hermes (doc : GET /api/projects → { projects: [Project] }). */
+async function hermesProjects() {
+  try {
+    const res = await hermesFetch('/api/projects', { method: 'GET' });
+    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data && data.projects) || [];
+    return { ok: true, projects: rows.filter(Boolean).map(function (p) {
+      return { id: p.project_id || p.id || '', name: p.name || 'Projet', color: p.color || null };
+    }) };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
+/* Historique d'une session (doc : GET /api/session?session_id=…&messages=1
+ * → { session: SessionDetail } avec messages[]). Mapping tolérant des rangées :
+ * le format exact des messages varie selon les surfaces, on normalise ici. */
+async function hermesSessionMessages(sessionId) {
+  try {
+    const res = await hermesFetch('/api/session?session_id=' + encodeURIComponent(sessionId) + '&messages=1', { method: 'GET' });
+    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
+    const data = await res.json();
+    const detail = (data && data.session) || data || {};
+    const raw = detail.messages || data.messages || [];
+    const messages = raw.filter(Boolean).map(function (m) {
+      var who = m.role || m.role_type || (m.type === 'user' ? 'user' : 'assistant');
+      var text = m.content || m.text || m.body || (typeof m.message === 'string' ? m.message : '') || '';
+      if (who === 'model') who = 'assistant';
+      if (who !== 'user' && who !== 'assistant') who = 'assistant';
+      return { who: who, text: String(text), at: m.created_at || m.timestamp || 0 };
+    });
+    return { ok: true, messages: messages, session: {
+      title: detail.display_title || detail.title || '',
+      workspace: detail.workspace || '',
+      model: detail.model || '',
+      streaming: !!(detail.is_streaming || detail.active_stream_id),
+      readOnly: !!detail.read_only
+    } };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
 /* Tournées en cours : un AbortController par session, pour le bouton Arrêter. */
 const running = new Map();
 
@@ -150,6 +226,9 @@ function registerIpc() {
     return merged;
   });
   ipcMain.handle('klai:hermes:status', () => hermesStatus());
+  ipcMain.handle('klai:hermes:sessions', () => hermesSessions());
+  ipcMain.handle('klai:hermes:projects', () => hermesProjects());
+  ipcMain.handle('klai:hermes:messages', (_e, arg) => hermesSessionMessages(String(arg.sessionId || '')));
   ipcMain.handle('klai:hermes:send', (_e, arg) => hermesSend(arg.sessionId, String(arg.content || '')));
   ipcMain.handle('klai:hermes:stop', (_e, arg) => {
     const ctrl = running.get(arg.sessionId);
