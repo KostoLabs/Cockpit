@@ -10,7 +10,7 @@ import sys, os, stat, zipfile, plistlib
 
 APP_NAME = "KostoLabs AI Cockpit"
 BUNDLE_ID = "ai.kostolabs.cockpit"
-APP_VERSION = "0.4.3"
+APP_VERSION = "0.4.4"
 
 
 def build(src_zip, icns_path, project_dir, out_zip):
