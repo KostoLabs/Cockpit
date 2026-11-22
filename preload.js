@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('klai', {
   },
   hermes: {
     status: () => ipcRenderer.invoke('klai:hermes:status'),
+    sessions: () => ipcRenderer.invoke('klai:hermes:sessions'),
+    projects: () => ipcRenderer.invoke('klai:hermes:projects'),
+    messages: (sessionId) => ipcRenderer.invoke('klai:hermes:messages', { sessionId }),
     send: (sessionId, content) => ipcRenderer.invoke('klai:hermes:send', { sessionId, content }),
     stop: (sessionId) => ipcRenderer.invoke('klai:hermes:stop', { sessionId })
   },
