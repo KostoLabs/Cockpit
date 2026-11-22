@@ -79,6 +79,62 @@
       actions: [['secondary', null, 'Ouvrir']] }
   ];
 
+  /* ============================ Données réelles (gateway Hermes) ============================ */
+
+  function fmtAgo(ts) {
+    if (!ts) return '';
+    var ms = ts > 1e12 ? ts : ts * 1000;
+    var mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    if (mins < 1) return 'à l’instant';
+    if (mins < 60) return 'il y a ' + mins + ' min';
+    var h = Math.round(mins / 60);
+    if (h < 24) return 'il y a ' + h + ' h';
+    return 'il y a ' + Math.round(h / 24) + ' j';
+  }
+
+  function shortWorkspace(ws) {
+    if (!ws) return 'Sans espace';
+    var parts = String(ws).replace(/\/+$/, '').split('/');
+    return parts[parts.length - 1] || String(ws);
+  }
+
+  /* Groupe les sessions Hermes par projet (project_id) puis par espace de travail. */
+  function groupRealSessions(sessions, projects) {
+    var byKey = {}, groups = [], projById = {};
+    (projects || []).forEach(function (p) { if (p && p.id) projById[p.id] = p; });
+    sessions.forEach(function (s) {
+      if (!s.id) return;
+      var proj = s.projectId && projById[s.projectId];
+      var key = proj ? 'p:' + proj.id : 'w:' + (s.workspace || '');
+      if (!byKey[key]) {
+        var label = proj ? proj.name : shortWorkspace(s.workspace);
+        byKey[key] = {
+          name: label,
+          init: label.slice(0, 2).toUpperCase(),
+          path: s.workspace || 'Session sans espace de travail',
+          isProject: !!proj,
+          sessions: []
+        };
+        groups.push(byKey[key]);
+      }
+      byKey[key].sessions.push(s);
+    });
+    groups.forEach(function (g) {
+      g.live = g.sessions.filter(function (s) { return s.streaming; }).length;
+      g.alertCount = g.sessions.filter(function (s) { return s.attention; }).length;
+      g.last = g.sessions.reduce(function (m, s) { return Math.max(m, s.updated || 0); }, 0);
+      g.sessions.sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+    });
+    groups.sort(function (a, b) { return (b.last || 0) - (a.last || 0); });
+    return groups;
+  }
+
+  function sessionChip(s) {
+    if (s.attention) return { status: 'attention', chip: 'À traiter' };
+    if (s.streaming) return { status: 'running', chip: 'En cours' };
+    return { status: 'done', chip: 'Inactive' };
+  }
+
   /* ============================ Pièces communes ============================ */
 
   function TopBar(props) {
@@ -112,14 +168,15 @@
         })),
       h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-2)', display: 'flex', flexDirection: 'column', gap: '2px', flex: '1', minHeight: 0, overflowY: 'auto' } },
         h('div', { style: { display: 'flex', alignItems: 'center', padding: '0 var(--space-1) var(--space-1) 10px' } },
-          h('span', { style: { flex: '1', fontSize: '12px', fontWeight: 500, color: 'var(--ink-muted)' } }, 'Projets actifs · 6'),
+          h('span', { style: { flex: '1', fontSize: '12px', fontWeight: 500, color: 'var(--ink-muted)' } },
+            props.demo ? 'Projets factices (démo)' : 'Projets actifs · ' + (props.groups ? props.groups.length : 0)),
           h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', iconOnly: true, label: 'Ajouter un projet' })),
-        PROJECTS.map(function (p) {
-          var open = props.route === 'project' && p.name === 'Accueil';
-          var tone = open ? 'ink' : (p.live === 0 && p.alert === 0 ? 'outline' : 'strong');
-          return h('a', { key: p.name, href: open ? '#' : '#',
+        (props.groups || []).map(function (p) {
+          var open = props.activeGroupName === p.name && props.route === 'project';
+          var tone = open ? 'ink' : (p.live > 0 ? 'strong' : 'outline');
+          return h('a', { key: p.name, href: '#',
             'aria-current': open ? 'page' : undefined,
-            onClick: function (e) { e.preventDefault(); props.onNavigate('project', p.name); },
+            onClick: function (e) { e.preventDefault(); if (props.onOpenGroup) props.onOpenGroup(p); },
             style: { display: 'flex', alignItems: 'center', gap: '10px', height: '40px', padding: '0 var(--space-2)',
               borderRadius: 'var(--radius-sm)', textDecoration: 'none', color: 'var(--ink)',
               background: open ? 'var(--surface-muted)' : 'transparent' } },
@@ -127,7 +184,7 @@
             h('span', { style: { flex: '1', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 } }, p.name),
             p.live > 0 ? h('span', { style: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--ink-muted)' } },
               h('span', { style: { width: '6px', height: '6px', borderRadius: '50%', background: 'var(--ink)' } }), String(p.live)) : null,
-            p.alert > 0 ? h(KLAI.Badge, { tone: p.alertTone, label: String(p.alert) }) : null);
+            p.alertCount > 0 ? h(KLAI.Badge, { tone: 'attention', label: String(p.alertCount) }) : null);
         }),
         h('a', { href: '#', style: { fontSize: '12.5px', padding: '6px 10px', color: 'var(--ink-muted)', textDecoration: 'none' } }, 'Tous les projets'),
         h('div', { style: { flex: '1' } }),
@@ -152,7 +209,7 @@
       prefix,
       !up ? h('a', { href: '#', onClick: function (e) { e.preventDefault(); if (props.onRetry) props.onRetry(); }, style: { fontWeight: 500, color: 'var(--ink)' } }, 'Reconnecter') : null,
       h('div', { style: { flex: '1' } }),
-      props.route === 'project' ? h('span', null, 'Projet : Accueil') : null,
+      props.route === 'project' ? h('span', null, 'Projet : ' + (props.projectName || 'Accueil')) : null,
       props.route === 'project' ? h('span', null, 'Approbations manuelles') : h('span', null, '6 sessions en cours'),
       props.route === 'project' ? h('span', null, 'Intelligent') : h('span', null, '2 sous-agents'),
       h('span', { style: { fontFamily: 'var(--font-mono)' } }, 'd923a5e'));
@@ -160,52 +217,68 @@
 
   /* ============================ Écran : vue d'ensemble ============================ */
 
-  var FILTERS = [
-    { value: 'all', label: 'Actifs · 6' },
-    { value: 'live', label: 'En cours · 4' },
-    { value: 'todo', label: 'À traiter · 3' },
-    { value: 'idle', label: 'En veille · 1' }
-  ];
-
   function OverviewScreen(props) {
     var filter = props.filter;
+    var groups = props.groups || [];
     var keep = {
       all: function () { return true; },
-      live: function (p) { return p.live > 0; },
-      todo: function (p) { return p.alert > 0; },
-      idle: function (p) { return p.live === 0 && p.alert === 0; }
+      live: function (g) { return g.live > 0; },
+      todo: function (g) { return g.alertCount > 0; },
+      idle: function (g) { return g.live === 0 && g.alertCount === 0; }
     };
-    var cards = PROJECTS.filter(keep[filter] || keep.all);
+    var cards = groups.filter(keep[filter] || keep.all);
+    var nLive = groups.reduce(function (n, g) { return n + g.live; }, 0);
+    var nSessions = groups.reduce(function (n, g) { return n + g.sessions.length; }, 0);
+    var nTodo = groups.reduce(function (n, g) { return n + g.alertCount; }, 0);
+    var filters = [
+      { value: 'all', label: 'Actifs · ' + groups.length },
+      { value: 'live', label: 'En cours · ' + nLive },
+      { value: 'todo', label: 'À traiter · ' + nTodo },
+      { value: 'idle', label: 'En veille · ' + groups.filter(keep.idle).length }
+    ];
+    var loading = props.loading;
     return h('main', { style: { flex: '999 1 520px', minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', overflowY: 'auto' } },
       h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 'var(--space-3)', flexWrap: 'wrap', padding: 'var(--space-1) var(--space-1) 0' } },
         h('div', { style: { flex: '1', minWidth: '220px' } },
           h('h1', { style: { margin: 0, fontFamily: 'var(--font-display)', fontSize: '26px', lineHeight: '32px', fontWeight: 300, letterSpacing: '-0.01em' } }, 'Vue d’ensemble'),
-          h('p', { style: { margin: '2px 0 0', fontSize: '13px', color: 'var(--ink-muted)' } }, '6 projets actifs · 6 sessions en cours · 3 éléments à traiter')),
-        h(KLAI.Segmented, { options: FILTERS, value: filter, onChange: props.onFilter, label: 'Filtrer les projets' })),
+          h('p', { style: { margin: '2px 0 0', fontSize: '13px', color: 'var(--ink-muted)' } },
+            loading ? 'Chargement des sessions Hermes…'
+            : props.demo ? 'Sans connexion au gateway : données de démonstration'
+            : nSessions + ' sessions · ' + groups.length + ' espaces · ' + nTodo + ' éléments à traiter')),
+        h(KLAI.Segmented, { options: filters, value: filter, onChange: props.onFilter, label: 'Filtrer les projets' })),
+      cards.length === 0 && !loading ? h('div', { style: { background: 'var(--surface)', border: '1px dashed var(--line-control)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', textAlign: 'center', color: 'var(--ink-muted)', fontSize: '13px' } },
+        'Aucun projet dans ce filtre.', h('br'), null,
+        props.demo ? 'Lancez « hermes gateway » puis Reconnecter pour voir vos sessions réelles.' : 'Ajustez le filtre ou créez une session.') : null,
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 'var(--space-3)' } },
-        cards.map(function (p) {
-          return h('section', { key: p.name, style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', minWidth: 0 } },
+        cards.map(function (g) {
+          var open = function () { if (props.onOpenGroup) props.onOpenGroup(g); };
+          return h('section', { key: g.name, style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', minWidth: 0 } },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
-              h(KLAI.ProjectAvatar, { initials: p.init, tone: 'strong', size: 32 }),
+              h(KLAI.ProjectAvatar, { initials: g.init, tone: g.live > 0 ? 'strong' : 'outline', size: 32 }),
               h('div', { style: { flex: '1', minWidth: 0 } },
                 h('h2', { style: { margin: 0, fontSize: '15px', lineHeight: '22px', fontWeight: 600 } },
-                  h('a', { href: '#', onClick: function (e) { e.preventDefault(); props.onOpenProject(p.name); }, style: { color: 'var(--ink)', textDecoration: 'none' } }, p.name)),
-                h('div', { style: { fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, p.path)),
-              p.alert > 0 ? h(KLAI.Badge, { tone: p.alertTone, label: p.alertLabel }) : null),
+                  h('a', { href: '#', onClick: function (e) { e.preventDefault(); open(); }, style: { color: 'var(--ink)', textDecoration: 'none' } }, g.name)),
+                h('div', { style: { fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, g.path)),
+              g.alertCount > 0 ? h(KLAI.Badge, { tone: 'attention', label: g.alertLabel || String(g.alertCount) }) : null),
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', flex: '1' } },
-              p.sessions.map(function (s) {
-                return h('a', { key: s.label, href: '#', onClick: function (e) { e.preventDefault(); props.onOpenProject(p.name); },
+              g.sessions.slice(0, 4).map(function (s) {
+                var chip = s.chipData ? s.chipData : (s.streaming !== undefined ? sessionChip(s) : null);
+                var step = s.step !== undefined ? s.step
+                  : (String(s.messageCount || 0) + ' messages · ' + fmtAgo(s.updated) + (s.model ? ' · ' + s.model : ''));
+                return h('a', { key: s.id || s.label, href: '#',
+                  onClick: function (e) { e.preventDefault(); if (s.id && props.onOpenSession) props.onOpenSession(s, g); else open(); },
                   style: { display: 'flex', flexDirection: 'column', gap: '3px', padding: 'var(--space-2) 10px', borderRadius: 'var(--radius-md)', background: 'var(--surface-muted)', textDecoration: 'none', color: 'var(--ink)' } },
                   h('span', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)' } },
-                    h('span', { style: { flex: '1', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, fontSize: '13px' } }, s.label),
-                    h(KLAI.StatusChip, { status: s.status, label: s.chip })),
-                  h('span', { style: { fontSize: '12px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.step));
+                    h('span', { style: { flex: '1', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, fontSize: '13px' } }, s.label || s.title),
+                    chip ? h(KLAI.StatusChip, { status: chip.status, label: chip.chip }) : null),
+                  h('span', { style: { fontSize: '12px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, step));
               }),
-              p.sessions.length === 0 ? h('div', { style: { flex: '1', minHeight: '90px', border: '1px dashed var(--line-control)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 'var(--space-3)', fontSize: '12.5px', color: 'var(--ink-muted)' } }, 'Aucune session active, dernière activité il y a 30 jours') : null),
+              g.sessions.length === 0 ? h('div', { style: { flex: '1', minHeight: '90px', border: '1px dashed var(--line-control)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 'var(--space-3)', fontSize: '12.5px', color: 'var(--ink-muted)' } }, 'Aucune session active' + (g.last ? ', dernière activité ' + fmtAgo(g.last) : '')) : null),
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)' } },
               h(KLAI.Button, { size: 'sm', icon: 'plus' }, 'Session'),
-              h('span', { style: { flex: '1', minWidth: 0, fontSize: '12px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, p.meta),
-              h(KLAI.Button, { variant: 'ghost', size: 'sm', onClick: function () { props.onOpenProject(p.name); } }, 'Ouvrir')));
+              h('span', { style: { flex: '1', minWidth: 0, fontSize: '12px', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                props.demo ? (g.meta || '') : g.sessions.length + (g.sessions.length > 1 ? ' sessions' : ' session') + (g.last ? ' · ' + fmtAgo(g.last) : '')),
+              h(KLAI.Button, { variant: 'ghost', size: 'sm', onClick: open }, 'Ouvrir')));
         })));
   }
 
@@ -285,39 +358,25 @@
   }
   /* ============================ Écran : projet ============================ */
 
-  var SESSION_TABS = [
-    { label: 'Première analyse juridique', status: 'done', chip: 'Terminée', on: true },
-    { label: 'Retrouver secrets PREP…', status: 'running', chip: 'En cours', on: false },
-    { label: 'Connecter Apple Remote…', status: 'attention', chip: 'Approbation', on: false }
-  ];
-
   function ProjectHeader(props) {
+    var s = props.session || {};
     return h('div', { style: { flex: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', padding: 'var(--space-3) var(--space-4) 0', borderBottom: '1px solid var(--line)' } },
       h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' } },
         h('a', { href: '#', onClick: function (e) { e.preventDefault(); props.onNavigate('overview'); }, style: { fontSize: '12.5px', color: 'var(--ink-muted)' } }, 'Vue d’ensemble'),
         h('span', { style: { color: 'var(--ink-subtle)' } }, '/'),
-        h('h1', { style: { margin: 0, fontFamily: 'var(--font-display)', fontSize: '22px', lineHeight: '28px', fontWeight: 300 } }, 'Accueil'),
-        h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--ink-muted)' } }, '~/qhaddouche · main'),
+        h('h1', { style: { margin: 0, fontFamily: 'var(--font-display)', fontSize: '22px', lineHeight: '28px', fontWeight: 300 } }, s.title || 'Accueil'),
+        s.workspace ? h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--ink-muted)' } }, s.workspace) : null,
+        s.readOnly ? h(KLAI.Badge, { tone: 'attention', label: 'Lecture seule' }) : null,
         h('div', { style: { flex: '1' } }),
-        h('span', { style: { fontSize: '12px', color: 'var(--ink-muted)' } }, '3 ouvertes · 18 au total'),
+        h('span', { style: { fontSize: '12px', color: 'var(--ink-muted)' } },
+          (s.messageCount || 0) + ' messages' + (s.model ? ' · ' + s.model : '')),
         h(KLAI.Button, { size: 'sm', icon: 'split' }, 'Côte à côte')),
       h('div', { role: 'tablist', 'aria-label': 'Sessions ouvertes', style: { display: 'flex', gap: '2px', overflowX: 'auto' } },
-        SESSION_TABS.map(function (t) {
-          return h('button', {
-            key: t.label, role: 'tab', type: 'button', 'aria-selected': t.on,
-            style: {
-              display: 'flex', alignItems: 'center', gap: '8px', height: '42px',
-              padding: '0 12px', fontFamily: 'var(--font-sans)', fontSize: '13px', flex: 'none',
-              background: 'transparent', border: 0,
-              borderBottom: '2px solid ' + (t.on ? 'var(--ink)' : 'transparent'),
-              color: t.on ? 'var(--ink)' : 'var(--ink-muted)',
-              fontWeight: t.on ? 600 : 400
-            }
-          },
-            h('span', { style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' } }, t.label),
-            h(KLAI.StatusChip, { status: t.status, label: t.chip }));
-        }),
-        h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', iconOnly: true, label: 'Nouvelle session dans Accueil' })));
+        h('button', { role: 'tab', type: 'button', 'aria-selected': true,
+          style: { display: 'flex', alignItems: 'center', gap: '8px', height: '42px', padding: '0 12px', fontFamily: 'var(--font-sans)', fontSize: '13px', flex: 'none', background: 'transparent', border: 0, borderBottom: '2px solid var(--ink)', color: 'var(--ink)', fontWeight: 600 } },
+          h('span', { style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '260px' } }, s.title || 'Session'),
+          h(KLAI.StatusChip, { status: s.streaming ? 'running' : 'done', label: s.streaming ? 'En cours' : 'Inactive' })),
+        h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', iconOnly: true, label: 'Nouvelle session' })));
   }
 
   function TimelineRail() {
@@ -332,30 +391,16 @@
   }
 
   function ChatBody(props) {
-    var num = { listStyleType: 'decimal', margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '4px' };
     var messages = props.messages || [];
+    var loading = !!props.loading;
     var colStyle = { maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', lineHeight: '24px', fontSize: '15px' };
     return h('div', { style: { flex: '1', minWidth: 0, overflowY: 'auto', padding: 'var(--space-6)' } },
       h('div', { style: colStyle },
-        h('div', { style: { alignSelf: 'flex-end', background: 'var(--inverse)', color: 'var(--on-inverse)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', maxWidth: '80%' } },
-          'Première analyse juridique, à froid, de ce contrat'),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: '12.5px', color: 'var(--ink-muted)' } },
-          h(KLAI.Icon, { name: 'check', size: 15 }),
-          h('span', null, '3 outils utilisés · lecture du contrat, recherche CNIL, comparaison des annexes · 18 s')),
-        h('h2', { style: { margin: 0, fontSize: '16px', lineHeight: '24px', fontWeight: 600 } }, 'Conclusion pratique'),
-        h('p', { style: { margin: 0 } },
-          h('b', { style: { fontWeight: 600 } }, 'Le principal risque n’est pas le prix du BUILD : c’est de dépendre d’un prestataire pour la paie, avec des recours réduits et une sortie mal organisée.')),
-        h('ol', { style: num },
-          h('li', null, 'Fixer l’identité des parties et sécuriser le montage intragroupe.'),
-          h('li', null, 'Protéger les fonds de paie et recalibrer la garantie d’impayés.'),
-          h('li', null, 'Réécrire responsabilité, preuve et délais de recours.')),
-        h('p', { style: { margin: 0, padding: 'var(--space-3) 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-muted)' } },
-          h('b', { style: { fontWeight: 600 } }, 'En bref :'), ' une base de négociation utilisable, mais pas une version prête pour signature côté ACTUAL.'),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: '2px' } },
-          h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'copy', iconOnly: true, label: 'Copier' }),
-          h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'branch', iconOnly: true, label: 'Créer une branche' }),
-          h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'refresh', iconOnly: true, label: 'Régénérer' }),
-          h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: 'var(--ink-muted)', marginLeft: 'var(--space-2)' } }, '6 oct., 16:16 · GPT-6-astra')),
+        loading ? h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: '13px', color: 'var(--ink-muted)' } },
+          h(KLAI.StatusChip, { status: 'running' }), 'Chargement de l’historique Hermes…') : null,
+        !loading && messages.length === 0 ? h('div', { style: { background: 'var(--surface)', border: '1px dashed var(--line-control)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', textAlign: 'center', color: 'var(--ink-muted)', fontSize: '13px' } },
+          'Aucun message dans cette session pour l’instant.', h('br'), null,
+          props.readOnly ? 'Ouvrez-la dans sa surface d’origine (CLI, TUI ou bureau) pour écrire.' : 'Envoyez une première tâche dans le composer ci-dessous.') : null,
         messages.map(function (m, i) {
           if (m.who === 'user') {
             return h('div', { key: 'm' + i, style: { alignSelf: 'flex-end', background: 'var(--inverse)', color: 'var(--on-inverse)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', maxWidth: '80%' } }, m.text);
@@ -383,17 +428,20 @@
     var text = React.useState('');
     var value = text[0], setValue = text[1];
     var sending = !!props.sending;
+    var readOnly = !!props.readOnly;
     function submit() {
       var v = value.trim();
-      if (!v || sending) return;
+      if (!v || sending || readOnly) return;
       setValue('');
       if (props.onSend) props.onSend(v);
     }
-    return h('div', { style: { maxWidth: '760px', width: '100%', margin: '0 auto', boxSizing: 'border-box', border: '1px solid var(--line-control)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', background: 'var(--surface)' } },
+    return h('div', { style: { maxWidth: '760px', width: '100%', margin: '0 auto', boxSizing: 'border-box', border: '1px solid ' + (readOnly ? 'var(--line)' : 'var(--line-control)'), borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', background: 'var(--surface)', opacity: readOnly ? 0.65 : 1 } },
       h('label', { style: { display: 'block', padding: 'var(--space-3) 14px var(--space-1)' } },
         h('span', { style: { position: 'absolute', left: '-9999px' } }, 'Message'),
-        h('textarea', { rows: 2, value: value,
-          placeholder: sending ? 'Hermes réfléchit… (le composer reprend à la fin du tour)' : 'Donnez une tâche à Hermes dans Accueil…',
+        h('textarea', { rows: 2, value: value, disabled: readOnly,
+          placeholder: readOnly
+            ? 'Session en lecture seule : écriture réservée à sa surface d’origine.'
+            : sending ? 'Hermes réfléchit… (le composer reprend à la fin du tour)' : 'Donnez une tâche à Hermes…',
           onChange: function (e) { setValue(e.target.value); },
           onKeyDown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } },
           style: { width: '100%', border: 0, outline: 0, resize: 'none', fontFamily: 'var(--font-sans)', fontSize: '15px', color: 'var(--ink)', background: 'transparent' } })),
@@ -403,27 +451,45 @@
         h(KLAI.Button, { size: 'sm', iconRight: 'chevron' }, 'Ultra → Max'),
         h('div', { style: { flex: '1' } }),
         h(KLAI.Button, { variant: 'ghost', icon: 'mic', iconOnly: true, label: 'Conversation vocale' }),
-        sending
-          ? h(KLAI.Button, { variant: 'danger', icon: 'stop', iconOnly: true, label: 'Arrêter', onClick: props.onStop })
-          : h(KLAI.Button, { variant: 'primary', icon: 'send', iconOnly: true, label: 'Envoyer', onClick: submit })));
+        readOnly ? h(KLAI.Button, { variant: 'secondary' }, 'Lecture seule')
+          : sending
+            ? h(KLAI.Button, { variant: 'danger', icon: 'stop', iconOnly: true, label: 'Arrêter', onClick: props.onStop })
+            : h(KLAI.Button, { variant: 'primary', icon: 'send', iconOnly: true, label: 'Envoyer', onClick: submit })));
   }
 
-  var SESSION_ID = 'cockpit-accueil';
+  var SESSION_ID_DEMO = 'cockpit-accueil';
 
   function ProjectScreen(props) {
-    var m = React.useState([]);
+    var session = props.session || { id: SESSION_ID_DEMO, title: 'Accueil (démo)', workspace: '', messageCount: 0, demo: true };
+    var sessionId = session.id;
+    var sessionRef = React.useRef(sessionId);
+    sessionRef.current = sessionId;
+
+    var m = React.useState(null); // null = chargement, [] une fois prêt
     var messages = m[0], setMessages = m[1];
     var s = React.useState(false);
     var sending = s[0], setSending = s[1];
     var hermes = global.klai && global.klai.hermes ? global.klai.hermes : null;
 
+    /* Historique réel de la session (GET /api/session côté main). */
+    React.useEffect(function () {
+      setMessages(null);
+      if (!props.session || !hermes) { setMessages([]); return; }
+      hermes.messages(sessionId).then(function (r) {
+        setMessages(r && r.ok
+          ? (r.messages || []).map(function (x) { return { who: x.who, text: x.text }; })
+          : []);
+      }).catch(function () { setMessages([]); });
+    }, [sessionId]);
+
     React.useEffect(function () {
       if (!global.klai || !global.klai.onHermesEvent) return;
       return global.klai.onHermesEvent(function (ev) {
-        if (ev.session !== SESSION_ID) return;
+        if (ev.session !== sessionRef.current) return;
         if (ev.type === 'delta') {
           setMessages(function (prev) {
-            var next = prev.slice();
+            var list = prev || [];
+            var next = list.slice();
             var last = next[next.length - 1];
             if (last && last.who === 'assistant' && last.streaming) {
               next[next.length - 1] = Object.assign({}, last, { text: last.text + ev.text });
@@ -435,16 +501,24 @@
         }
         if (ev.type === 'done') {
           setMessages(function (prev) {
-            var next = prev.slice();
+            var list = prev || [];
+            var next = list.slice();
             var last = next[next.length - 1];
             if (last && last.streaming) next[next.length - 1] = Object.assign({}, last, { streaming: false });
             return next;
           });
           setSending(false);
         }
+        if (ev.type === 'notice') {
+          setMessages(function (prev) {
+            var next = (prev || []).slice();
+            next.push({ who: 'assistant', text: '', error: ev.text || 'Remarque Hermes', streaming: false });
+            return next;
+          });
+        }
         if (ev.type === 'cancelled') {
           setMessages(function (prev) {
-            var next = prev.slice();
+            var next = (prev || []).slice();
             var last = next[next.length - 1];
             if (last && last.streaming) next[next.length - 1] = Object.assign({}, last, { streaming: false, text: last.text + ' [interrompu]' });
             return next;
@@ -453,7 +527,7 @@
         }
         if (ev.type === 'error') {
           setMessages(function (prev) {
-            var next = prev.slice();
+            var next = (prev || []).slice();
             var last = next[next.length - 1];
             if (last && last.streaming) next[next.length - 1] = Object.assign({}, last, { streaming: false, error: ev.text });
             else next.push({ who: 'assistant', text: '', error: ev.text, streaming: false });
@@ -465,17 +539,15 @@
     }, []);
 
     function handleSend(text) {
-      setMessages(function (prev) { return prev.concat([{ who: 'user', text: text }]); });
+      setMessages(function (prev) { return (prev || []).concat([{ who: 'user', text: text }]); });
       setSending(true);
       if (hermes) {
-        hermes.send(SESSION_ID, text).catch(function () { setSending(false); });
+        hermes.send(sessionRef.current, text).catch(function () { setSending(false); });
       } else {
-        // Aucun backend branché (aperçu dans un navigateur, par exemple) :
-        // réponse simulée pour que le fil reste démontrable.
-        setMessages(function (prev) { return prev.concat([{ who: 'assistant', text: '', streaming: true }]); });
+        setMessages(function (prev) { return (prev || []).concat([{ who: 'assistant', text: '', streaming: true }]); });
         setTimeout(function () {
           setMessages(function (prev) {
-            var next = prev.slice();
+            var next = (prev || []).slice();
             var last = next[next.length - 1];
             if (last && last.streaming) {
               next[next.length - 1] = Object.assign({}, last, {
@@ -490,18 +562,20 @@
     }
 
     function handleStop() {
-      if (hermes) hermes.stop(SESSION_ID);
+      if (hermes) hermes.stop(sessionRef.current);
       setSending(false);
     }
 
     return h('main', { style: { flex: '999 1 520px', minWidth: 0, height: '100%', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } },
-      h(ProjectHeader, { onNavigate: props.onNavigate }),
+      h(ProjectHeader, { onNavigate: props.onNavigate, session: session }),
       h('div', { style: { flex: '1', minHeight: 0, display: 'flex' } },
         h(TimelineRail),
-        h(ChatBody, { messages: messages })),
+        h(ChatBody, { messages: messages || [], loading: messages === null })),
       h('div', { style: { flex: 'none', padding: '0 var(--space-5) var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' } },
+        session.readOnly ? h('div', { style: { maxWidth: '760px', width: '100%', margin: '0 auto', boxSizing: 'border-box', fontSize: '12.5px', color: 'var(--ink-muted)', background: 'var(--surface-muted)', border: '1px solid var(--line)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)' } },
+          'Session créée par une autre surface Hermes (CLI, TUI ou bureau) : l’historique est visible en lecture seule. Pour discuter, ouvrez-la dans sa surface d’origine ou démarrez une nouvelle session depuis le cockpit.') : null,
         h(SubAgentBar),
-        h(Composer, { onSend: handleSend, onStop: handleStop, sending: sending, model: props.model })));
+        h(Composer, { onSend: handleSend, onStop: handleStop, sending: sending, model: session.model || props.model, readOnly: session.readOnly })));
   }
 
 
@@ -563,6 +637,20 @@
 
   /* ============================ Racine ============================ */
 
+  /* Données de démonstration, mise à la forme attendue par les écrans réels. */
+  function toDemoGroups() {
+    return PROJECTS.map(function (p) {
+      return {
+        name: p.name, init: p.init, path: p.path, meta: p.meta || '',
+        live: p.live || 0, alertCount: p.alert || 0, alertLabel: p.alertLabel || '',
+        isProject: false, last: 0,
+        sessions: p.sessions.map(function (s) {
+          return { id: null, label: s.label, step: s.step, chipData: { status: s.status, chip: s.chip } };
+        })
+      };
+    });
+  }
+
   function App() {
     var routeState = React.useState('overview');
     var route = routeState[0], setRoute = routeState[1];
@@ -572,28 +660,67 @@
     var backend = backendState[0], setBackend = backendState[1];
     var modelState = React.useState('hermes-agent');
     var model = modelState[0], setModel = modelState[1];
+    var loadingState = React.useState(true);
+    var loading = loadingState[0], setLoading = loadingState[1];
+    var groupsState = React.useState(toDemoGroups);
+    var groups = groupsState[0], setGroups = groupsState[1];
+    var demoState = React.useState(true);
+    var demo = demoState[0], setDemo = demoState[1];
+    var sessionState = React.useState(null);
+    var selectedSession = sessionState[0], setSelectedSession = sessionState[1];
+    var activeGroupState = React.useState('');
+    var activeGroupName = activeGroupState[0], setActiveGroupName = activeGroupState[1];
     var hermes = global.klai && global.klai.hermes ? global.klai.hermes : null;
 
-    function probe() {
-      if (!hermes) return;
-      hermes.status().then(setBackend);
+    /* Synchro complète : statut du gateway, sessions réelles, projets réels.
+       Sans gateway (ou sans réseau), l'app retombe sur les données de démonstration. */
+    function loadAll() {
+      if (!hermes) { setLoading(false); setDemo(true); return; }
+      setLoading(true);
+      var tries;
+      try {
+        tries = Promise.allSettled
+          ? Promise.allSettled([hermes.status(), hermes.sessions(), hermes.projects()])
+          : Promise.all([hermes.status(), hermes.sessions(), hermes.projects()].map(function (p) {
+              return p.then(function (v) { return { status: 'fulfilled', value: v }; },
+                             function (e) { return { status: 'rejected', reason: e }; });
+            }));
+      } catch (err) { tries = null; }
+      if (!tries) { setLoading(false); return; }
+      tries.then(function (rs) {
+        var st = rs[0] && rs[0].status === 'fulfilled' ? rs[0].value : null;
+        if (st) setBackend(st);
+        var sd = rs[1] && rs[1].status === 'fulfilled' ? rs[1].value : null;
+        var pr = rs[2] && rs[2].status === 'fulfilled' ? rs[2].value : null;
+        if (sd && sd.ok && sd.sessions && sd.sessions.length) {
+          setGroups(groupRealSessions(sd.sessions, pr && pr.projects));
+          setDemo(false);
+        } else {
+          setGroups(toDemoGroups());
+          setDemo(true);
+        }
+        setLoading(false);
+      }).catch(function () { setLoading(false); });
     }
 
     React.useEffect(function () {
-      probe();
-      var timer = hermes ? setInterval(function () { probe(); }, 25000) : null;
+      loadAll();
+      var timer = hermes ? setInterval(loadAll, 30000) : null;
 
       if (global.klai && global.klai.settings) {
         global.klai.settings.get().then(function (s) {
           if (s && s.theme) document.documentElement.setAttribute('data-theme', s.theme);
           if (s && s.model) setModel(s.model);
-        });
+        }).catch(function () {});
       }
 
       var offs = [];
       if (global.klai && global.klai.on) {
         offs.push(global.klai.on('klai:theme', function (t) { document.documentElement.setAttribute('data-theme', t); }));
-        offs.push(global.klai.on('klai:new-session', function () { setRoute('project'); }));
+        offs.push(global.klai.on('klai:new-session', function () {
+          setRoute('project');
+          loadAll();
+        }));
         offs.push(global.klai.on('klai:settings-open', function () { setRoute('settings'); }));
       }
       return function () {
@@ -604,18 +731,38 @@
 
     function navigate(r) { setRoute(r); }
 
+    function openSession(s, g) {
+      if (s && s.id) setSelectedSession(s);
+      if (g && g.name) setActiveGroupName(g.name);
+      setRoute('project');
+    }
+
+    function openGroup(g) {
+      var writable = (g.sessions || []).filter(function (s) { return s.id; });
+      if (writable.length) openSession(writable[0], g);
+      else { setActiveGroupName(g.name); setSelectedSession(null); setRoute('project'); }
+    }
+
+    /* Après un envoi, la session distante peut changer d'état : resynchroniser discrètement. */
+    React.useEffect(function () {
+      if (!global.klai || !global.klai.onHermesEvent) return;
+      return global.klai.onHermesEvent(function (ev) {
+        if (ev.type === 'done' || ev.type === 'error' || ev.type === 'cancelled') loadAll();
+      });
+    }, []);
+
     var main;
-    if (route === 'overview') main = h(OverviewScreen, { filter: filter, onFilter: setFilter, onOpenProject: function () { setRoute('project'); } });
-    else if (route === 'project') main = h(ProjectScreen, { onNavigate: navigate, model: model });
-    else main = h(SettingsScreen, { onBackend: setBackend, onSaved: probe });
+    if (route === 'overview') main = h(OverviewScreen, { filter: filter, onFilter: setFilter, groups: groups, demo: demo, loading: loading, onOpenSession: openSession, onOpenGroup: openGroup });
+    else if (route === 'project') main = h(ProjectScreen, { onNavigate: navigate, model: model, session: selectedSession });
+    else main = h(SettingsScreen, { onBackend: setBackend, onSaved: loadAll });
 
     return h('div', { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'var(--font-sans)', fontSize: '13.5px' } },
       h(TopBar, { onNavigate: navigate }),
       h('div', { style: { flex: '1', minHeight: 0, display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', padding: '0 var(--space-3) var(--space-3)' } },
-        h(SideNav, { route: route, onNavigate: navigate }),
+        h(SideNav, { route: route, onNavigate: navigate, groups: groups, demo: demo, activeGroupName: activeGroupName, onOpenGroup: openGroup }),
         main,
         route === 'settings' ? null : h(ActivityAside, { route: route, asideStyle: { flex: '1 0 300px', maxWidth: '340px', height: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', minHeight: 0, overflowY: 'auto' } })),
-      h(StatusBar, { route: route, backend: backend, onRetry: probe }));
+      h(StatusBar, { route: route, projectName: selectedSession ? (selectedSession.title || activeGroupName) : (activeGroupName || 'Accueil'), backend: backend, onRetry: loadAll }));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(h(App));
