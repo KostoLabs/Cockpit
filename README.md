@@ -6,13 +6,11 @@ Application desktop Electron qui habille Hermes (l'agent de Nous Research) au de
 
 ```bash
 npm install
-./scripts/setup-fonts.sh    # polices woff2 (Fontsource, SIL OFL)
-./scripts/setup-icons.sh    # AppIcon.icns + PNG depuis le SVG
 npm start        # production
 npm run dev      # avec DevTools
 ```
 
-Requiert Node 18+ et une plateforme supportée par Electron (macOS, Windows, Linux). Les fichiers binaires du dépôt (polices woff2, icns, PNG) ne sont pas versionnés : les scripts ci-dessus les téléchargent ou les génèrent.
+Requiert Node 18+ et une plateforme supportée par Electron (macOS, Windows, Linux).
 
 ## Structure
 
@@ -32,16 +30,17 @@ design-system/             copie locale du design system KostoLabs AI
 vendor/                    React 18.3.1 UMD
 ```
 
-## Version v0.4.3 (icône conforme au gabarit Dock)
+## Version v0.4.4 (synchro des sessions Hermes)
 
-- Écrans « Vue d'ensemble », « Projet Accueil » et « Réglages Hermes », navigation entre les trois.
+- Écrans « Vue d'ensemble », « Projet » et « Réglages Hermes », navigation entre les trois.
 - Thème clair/sombre persisté dans `settings.json` (menu Affichage, raccourcis ⌘L/⌘D).
 - Composants officiels du design system avec `index.d.ts`, polices locales (Fontsource, SIL OFL) : 100 % hors ligne.
 - **Pilote Hermes** : le process main parle au gateway Hermes (API OpenAI-compatible, `http://127.0.0.1:8642/v1` par défaut, clé `API_SERVER_KEY`). Le renderer reste isolé (`contextIsolation`) et ne voit que l'ipc `klai.hermes`.
 - Chat en streaming : `POST /v1/chat/completions` (SSE, `X-Hermes-Session-Id`, `Idempotency-Key`), deltas affichés en direct, bouton Arrêter (AbortController), `finish_reason` particuliers signalés.
-- Barre d'état : sondage `GET /v1/models` au lancement puis toutes les 25 s, badge connecté/indisponible, bouton Reconnecter.
+- **Synchro des sessions réelles** : `GET /api/sessions`, `GET /api/projects` et `GET /api/session?session_id=…&messages=1` interrogés au lancement puis toutes les 30 s (et après chaque tour de chat). Les sessions sont groupées par projet, sinon par espace de travail, dans la navigation et la vue d'ensemble ; l'historique complet d'une session se charge à son ouverture.
+- Sessions créées par une autre surface (CLI, TUI, bureau) : visibles en **lecture seule** (le gateway refuse l'écriture sur ces sessions, 409), avec notice et composer désactivé.
 - Réglages (⌘,) : URL du backend, clé API, modèle, test de connexion. Persistés dans `settings.json` (userData).
-- Sans backend, l'app démarre quand même : la vue d'ensemble affiche les données factices et le chat répond en mode démonstration.
+- Sans backend, l'app démarre quand même : la vue d'ensemble affiche les données factices et le chat répond en mode démonstration. `node tests/test-pilote-hermes.js` valide le pilote SSE et les mappings de synchro sans Electron.
 
 ## Brancher Hermes
 
@@ -49,9 +48,9 @@ vendor/                    React 18.3.1 UMD
 2. Lancer `hermes gateway` (le port s'affiche, 8642 par défaut).
 3. Lancer le cockpit : `npm start`, puis ⌘, pour renseigner URL et clé si besoin, « Tester la connexion ».
 
-## Bundles macOS (v0.4.3)
+## Bundles macOS (v0.4.4)
 
-Deux bundles prêts à glisser dans `/Applications` sont fournis : **mac-intel** (x64) et **mac-silicon** (arm64), app nommée « KostoLabs AI Cockpit », version 0.4.3, icône AppIcon générée depuis `design-system/logos/kl-app-icon.svg`.
+Deux bundles prêts à glisser dans `/Applications` sont fournis : **mac-intel** (x64) et **mac-silicon** (arm64), app nommée « KostoLabs AI Cockpit », version 0.4.4, icône AppIcon générée depuis `design-system/logos/kl-app-icon.svg`.
 
 - App non signée : au premier lancement, clic droit sur l'app puis « Ouvvrir », ou `xattr -dr com.apple.quarantine "KostoLabs AI Cockpit.app"`.
 - macOS 10.15 ou plus récent (Electron 31).
@@ -61,8 +60,8 @@ Deux bundles prêts à glisser dans `/Applications` sont fournis : **mac-intel**
 
 ## Prochaines étapes
 
-1. Sessions multiples : lister les sessions Hermes dans la colonne de navigation (l'API Sessions du gateway) plutôt que la session unique `cockpit-accueil`.
-2. Approbations : receptor d'événements d'approbation du gateway dans le panneau « À traiter ».
-3. Géométrie de fenêtre persistée.
+1. Approbations : récepteur d'événements d'approbation du gateway dans le panneau « À traiter ».
+2. Géométrie de fenêtre persistée.
+3. Création de projet et sessions multiples côté cockpit (écrire, pas seulement lire).
 
 © KostoLabs Company
