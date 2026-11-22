@@ -15,7 +15,8 @@ Requiert Node 18+ et une plateforme supportée par Electron (macOS, Windows, Lin
 ## Structure
 
 ```
-main.js                    fenêtre, menu, réglages persistés, pilote Hermes (HTTP + SSE)
+main.js                    fenêtre, menu, réglages persistés, câblage IPC du pilote
+pilote.js                  pilote Hermes (HTTP + SSE) sans dépendance Electron, partagé avec les tests
 preload.js                 pont renderer <-> main : klai.hermes, klai.settings, événements
 renderer/
   index.html               charge design-system + React UMD, sans build step
@@ -29,6 +30,20 @@ design-system/             copie locale du design system KostoLabs AI
                           ContextMeter, Panel
 vendor/                    React 18.3.1 UMD
 ```
+
+## Version v0.5.0 (audit et reprise)
+
+Audit complet après v0.4.4 : plusieurs éléments étaient cassés ou non branchés.
+
+- **Pilote extrait dans `pilote.js`** (sans Electron) : `tests/test-pilote-hermes.js` teste désormais le code livré, contre un mock au format réel du gateway (`{object:'list', data:[…]}`, SSE nommé, 409, approbations).
+- **Endpoints corrigés** : `GET /api/sessions?limit=200` (forme réelle `{data:[…]}`, tolère `{sessions:[…]}`), historique via `GET /api/sessions/{id}/messages` (repli `GET /api/session?session_id=…&messages=1`), `GET /api/jobs`, `POST /api/sessions` (création), `POST /api/sessions/{id}/fork`, `POST /v1/runs/{id}/approval`. `/api/projects` n'existe pas sur le gateway local (404 toléré).
+- **Envoi natif** : `POST /api/sessions/{id}/chat/stream` (SSE nommé : `assistant.delta`, `tool.started/completed`, `approval.request`, `run.completed`, `done`), repli `/v1/chat/completions` + `X-Hermes-Session-Id` si 404/405. Les lignes `event:` sont parsées (progression d'outils, approbations affichées dans « À traiter » avec Approuver/Refuser).
+- **409 `permission_denied`** (session CLI/TUI/messaging) : converti en événement `readonly`, composer désactivé avec notice, au lieu d'une erreur brute. La lecture seule se déduit aussi du champ `source`.
+- **Nouvelle session fonctionnelle** : `POST /api/sessions` puis ouverture ; repli démo hors-ligne. Boutons branchés : Nouvelle session (barre + ⌘N + cartes), Réglages (⌘,), Ajouter un projet, Tous les projets, Côte à côte (fork), Session par carte.
+- **Navigation réparée** : `KLAI.NavItem` ne propage pas `onClick` ; les items sont enveloppés. **Recherche** : ⌘K focus le champ et filtre les projets/sessions.
+- **Données réelles dès que le backend répond** (même liste vide) ; le mode démo n'est montré que hors-ligne, et le chat répond en démo dans ce cas (auparavant : erreur 409/connrefused dans Electron).
+- **Aside et barre d'état réels** : approbations en attente, sessions en cours, jobs planifiés (`/api/jobs`), outils du tour (SSE), contexte %, compteurs réels ; la frise chronologique reflète le nombre de messages.
+- **Fenêtre** : géométrie (position/taille/maximisé) persistée dans `settings.json` et restaurée. **Thème** : `nativeTheme.themeSource` synchronisé (chrome de la fenêtre comprise).
 
 ## Version v0.4.4 (synchro des sessions Hermes)
 
@@ -60,8 +75,8 @@ Deux bundles prêts à glisser dans `/Applications` sont fournis : **mac-intel**
 
 ## Prochaines étapes
 
-1. Approbations : récepteur d'événements d'approbation du gateway dans le panneau « À traiter ».
-2. Géométrie de fenêtre persistée.
-3. Création de projet et sessions multiples côté cockpit (écrire, pas seulement lire).
+1. Steer du tour en cours (`POST /v1/runs/{run_id}/steer`) depuis la barre sous-agent.
+2. Pièges/renommage/suppression de sessions (PATCH/DELETE /api/sessions/{id}).
+3. Piège de modèle par session (`POST /api/sessions/{id}/model`).
 
 © KostoLabs Company
