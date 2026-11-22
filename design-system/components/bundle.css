@@ -1,0 +1,96 @@
+/* KostoLabs AI — composants. Charger après tokens.css. Toutes les valeurs viennent des tokens. */
+.kl-icon { flex: none; display: inline-block; vertical-align: middle; }
+
+/* Logo */
+.kl-logo { display: inline-flex; align-items: center; font-family: var(--font-display); line-height: 1; white-space: nowrap; }
+.kl-logo-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.kl-logo-ink { color: var(--ink); }
+.kl-logo-ink .kl-logo-tile { background: var(--inverse); color: var(--on-inverse); }
+.kl-logo-inverse { color: var(--on-inverse); }
+.kl-logo-inverse .kl-logo-tile { background: var(--on-inverse); color: var(--inverse); }
+.kl-logo-word { display: inline-flex; align-items: flex-start; font-weight: 400; letter-spacing: -0.01em; gap: 0 !important; }
+.kl-logo-ai { font-size: 0.58em; font-weight: 300; letter-spacing: 0.03em; margin-left: 0.2em; margin-top: 0.1em; line-height: 1; }
+.kl-logo-ai-lg { font-size: 0.32em; font-weight: 200; margin-left: 0.16em; margin-top: 0.3em; }
+
+/* Boutons */
+.kl-btn { font-family: var(--font-sans); font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); cursor: pointer; white-space: nowrap; text-decoration: none; box-sizing: border-box; flex: none; }
+.kl-btn-md { height: 40px; padding: 0 var(--space-4); font-size: 13.5px; }
+.kl-btn-sm { height: 32px; padding: 0 var(--space-3); font-size: 12.5px; border-radius: var(--radius-sm); }
+.kl-btn-icon.kl-btn-md { width: 40px; padding: 0; }
+.kl-btn-icon.kl-btn-sm { width: 32px; padding: 0; }
+.kl-btn-primary { background: var(--inverse); color: var(--on-inverse); }
+.kl-btn-primary:hover { background: var(--ink-muted); }
+.kl-btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-control); }
+.kl-btn-secondary:hover { background: var(--surface-muted); }
+.kl-btn-ghost { background: transparent; color: var(--ink-muted); }
+.kl-btn-ghost:hover { background: var(--surface-muted); color: var(--ink); }
+.kl-btn-danger { background: var(--surface); color: var(--danger); border-color: var(--line-control); }
+.kl-btn-danger:hover { background: var(--danger-soft); }
+.kl-btn:focus-visible, .kl-nav:focus-visible, .kl-seg-opt:focus-visible, .kl-panel-action:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus); }
+.kl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Chips de statut */
+.kl-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: var(--radius-pill); font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none; box-sizing: border-box; }
+.kl-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.kl-chip-running { background: var(--inverse); color: var(--on-inverse); }
+.kl-chip-attention { background: var(--attention-soft); color: var(--attention); }
+.kl-chip-error { background: var(--danger-soft); color: var(--danger); }
+.kl-chip-done { background: var(--surface-strong); color: var(--ink-muted); }
+.kl-chip-idle { background: transparent; color: var(--ink-muted); box-shadow: inset 0 0 0 1px var(--line-control); }
+
+/* Badges de compte */
+.kl-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill); font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; box-sizing: border-box; flex: none; }
+.kl-badge-neutral { background: var(--surface-strong); color: var(--ink); }
+.kl-badge-attention { background: var(--attention-soft); color: var(--attention); }
+.kl-badge-danger { background: var(--danger-soft); color: var(--danger); }
+.kl-badge-inverse { background: var(--inverse); color: var(--on-inverse); }
+
+/* Avatar de projet */
+.kl-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: var(--radius-sm); font-family: var(--font-sans); font-weight: 600; letter-spacing: 0.02em; box-sizing: border-box; }
+.kl-avatar-ink { background: var(--inverse); color: var(--on-inverse); }
+.kl-avatar-strong { background: var(--surface-strong); color: var(--ink); }
+.kl-avatar-outline { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
+
+/* Navigation */
+.kl-nav { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--ink); text-decoration: none; font-family: var(--font-sans); font-size: 13.5px; box-sizing: border-box; }
+.kl-nav .kl-icon { color: var(--ink-muted); }
+.kl-nav:hover { background: var(--surface-muted); }
+.kl-nav-active, .kl-nav-active:hover { background: var(--inverse); color: var(--on-inverse); font-weight: 500; }
+.kl-nav-active .kl-icon { color: var(--on-inverse); }
+.kl-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Recherche */
+.kl-search { display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--line-control); color: var(--ink-muted); box-sizing: border-box; width: 100%; font-family: var(--font-sans); }
+.kl-search input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; font-family: var(--font-sans); font-size: 13.5px; color: var(--ink); -webkit-appearance: none; appearance: none; }
+.kl-search input::placeholder { color: var(--ink-subtle); }
+.kl-search:focus-within { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus); }
+.kl-kbd { font-family: var(--font-mono); font-size: 11px; color: var(--ink-subtle); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+
+/* Contrôle segmenté */
+.kl-seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--surface-strong); box-sizing: border-box; }
+.kl-seg-block { display: grid; width: 100%; }
+.kl-seg-opt { height: 32px; padding: 0 var(--space-3); border: 0; border-radius: 7px; background: transparent; color: var(--ink-muted); font-family: var(--font-sans); font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.kl-seg-sm .kl-seg-opt { height: 28px; font-size: 12px; padding: 0 var(--space-2); }
+.kl-seg-opt[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-raised); }
+
+/* Jauge de contexte */
+.kl-meter { display: flex; flex-direction: column; gap: var(--space-2); font-family: var(--font-sans); }
+.kl-meter-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 600; color: var(--ink); }
+.kl-meter-num { font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--ink-muted); }
+.kl-meter-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-strong); }
+.kl-meter-seg { height: 100%; }
+.kl-meter-s0 { background: var(--ink); }
+.kl-meter-s1 { background: var(--ink-subtle); }
+.kl-meter-s2 { background: var(--line-control); }
+.kl-meter-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: 12px; color: var(--ink-muted); }
+.kl-meter-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.kl-meter-key { width: 8px; height: 8px; border-radius: 2px; }
+
+/* Panneau */
+.kl-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); box-sizing: border-box; min-width: 0; font-family: var(--font-sans); color: var(--ink); }
+.kl-panel-strong { background: var(--surface-strong); border-color: transparent; }
+.kl-panel-head { display: flex; align-items: center; gap: var(--space-2); }
+.kl-panel-title { margin: 0; flex: 1; min-width: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
+.kl-panel-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-muted); }
+.kl-panel-action { font-size: 12px; color: var(--ink-muted); text-decoration: underline; text-underline-offset: 2px; border-radius: 4px; }
+.kl-panel-action:hover { color: var(--ink); }
