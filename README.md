@@ -6,11 +6,13 @@ Application desktop Electron qui habille Hermes (l'agent de Nous Research) au de
 
 ```bash
 npm install
+./scripts/setup-fonts.sh    # polices woff2 (Fontsource, SIL OFL)
+./scripts/setup-icons.sh    # AppIcon.icns + PNG depuis le SVG
 npm start        # production
 npm run dev      # avec DevTools
 ```
 
-Requiert Node 18+ et une plateforme supportée par Electron (macOS, Windows, Linux).
+Requiert Node 18+ et une plateforme supportée par Electron (macOS, Windows, Linux). Les fichiers binaires du dépôt (polices woff2, icns, PNG) ne sont pas versionnés : les scripts ci-dessus les téléchargent ou les génèrent.
 
 ## Structure
 
