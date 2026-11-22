@@ -1,7 +1,7 @@
 {
   "name": "klai-cockpit",
   "productName": "KostoLabs AI — Cockpit",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Cockpit desktop Hermes habillé au design system KostoLabs AI.",
   "main": "main.js",
   "author": "KostoLabs Company",
