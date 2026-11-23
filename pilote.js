@@ -267,6 +267,47 @@ function createHermesClient(opts) {
     }
   }
 
+  /* GET /api/model/options — inventaire du picker (providers + modèles), comme le Desktop.
+   * Repli : /v1/models si 404 (vieux gateway). */
+  async function modelOptions() {
+    try {
+      const res = await request('/api/model/options', { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json();
+        const providers = rowsOf(data, ['providers']).filter(Boolean).map(function (p) {
+          return {
+            slug: p.slug || p.id || '',
+            name: p.name || p.slug || 'Provider',
+            isCurrent: !!p.is_current,
+            models: rowsOf(p, ['models']).filter(Boolean).map(function (m) {
+              const id = typeof m === 'string' ? m : (m.id || m.model || '');
+              return { id: id, label: (typeof m === 'object' && (m.label || m.name)) || id };
+            }).filter(function (m) { return !!m.id; })
+          };
+        }).filter(function (p) { return !!p.slug || p.models.length; });
+        return { ok: true, providers: providers, currentProvider: data.current_provider || '', currentModel: data.current_model || '' };
+      }
+      if (res.status !== 404) return { ok: false, error: await readError(res) };
+      const st = await status();
+      return { ok: st.ok === true, providers: [{ slug: 'default', name: 'Modèle du gateway', isCurrent: true, models: (st.models || []).map(function (id) { return { id: id, label: id }; }) }], fallback: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
+  /* POST /api/sessions/{id}/model — verrouille le modèle de la session (comme le Desktop). */
+  async function setSessionModel(sessionId, model, provider) {
+    try {
+      const body = { model: model || '' };
+      if (provider) body.provider = provider;
+      const res = await request('/api/sessions/' + encodeURIComponent(sessionId) + '/model', { method: 'POST', body: JSON.stringify(body) });
+      if (!res.ok) return { ok: false, error: await readError(res) };
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  }
+
   /* Lit un flux SSE et émet les événements normalisés. Gère les deux formats :
    * - chat/stream : lignes `event: <nom>` + `data: <json>`
    * - chat/completions : `data: {…chat.completion.chunk…}` et `data: [DONE]`
@@ -380,14 +421,14 @@ function createHermesClient(opts) {
           method: 'POST',
           signal: ctrl.signal,
           headers: { 'Idempotency-Key': key, Accept: 'text/event-stream' },
-          body: JSON.stringify({ message: content, model: model })
+          body: JSON.stringify({ message: content, model: model, provider: s.provider || undefined })
         });
         if (res.status === 404 || res.status === 405) {
           res = await request('/v1/chat/completions', {
             method: 'POST',
             signal: ctrl.signal,
             headers: { 'Idempotency-Key': key, Accept: 'text/event-stream', 'X-Hermes-Session-Id': sessionId },
-            body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], stream: true })
+            body: JSON.stringify({ model: model, provider: s.provider || undefined, messages: [{ role: 'user', content: content }], stream: true })
           });
         }
       } else {
@@ -395,7 +436,7 @@ function createHermesClient(opts) {
           method: 'POST',
           signal: ctrl.signal,
           headers: { 'Idempotency-Key': key, Accept: 'text/event-stream', 'X-Hermes-Session-Id': sessionId },
-          body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], stream: true })
+          body: JSON.stringify({ model: model, provider: s.provider || undefined, messages: [{ role: 'user', content: content }], stream: true })
         });
       }
       if (!res.ok) {
@@ -450,6 +491,8 @@ function createHermesClient(opts) {
   return {
     status: status,
     capabilities: capabilities,
+    modelOptions: modelOptions,
+    setSessionModel: setSessionModel,
     sessions: sessions,
     projects: projects,
     sessionMessages: sessionMessages,

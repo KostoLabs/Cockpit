@@ -514,7 +514,7 @@
           style: { width: '100%', border: 0, outline: 0, resize: 'none', fontFamily: 'var(--font-sans)', fontSize: '15px', color: 'var(--ink)', background: 'transparent' } })),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px var(--space-2) var(--space-2)', flexWrap: 'wrap' } },
         h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', iconOnly: true, label: 'Joindre un fichier' }),
-        h(KLAI.Button, { size: 'sm', iconRight: 'chevron' }, props.model || 'hermes-agent'),
+        h(ModelPicker, { size: 'sm', providers: props.providers || [], value: { model: props.model || '', provider: props.provider || '' }, onChange: props.onModelChange }),
         h(KLAI.Button, { size: 'sm', iconRight: 'chevron' }, 'Ultra → Max'),
         h('div', { style: { flex: '1' } }),
         h(KLAI.Button, { variant: 'ghost', icon: 'mic', iconOnly: true, label: 'Conversation vocale' }),
@@ -668,9 +668,46 @@
         readOnly ? h('div', { style: { maxWidth: '760px', width: '100%', margin: '0 auto', boxSizing: 'border-box', fontSize: '12.5px', color: 'var(--ink-muted)', background: 'var(--surface-muted)', border: '1px solid var(--line)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)' } },
           'Session créée par une autre surface Hermes (CLI, TUI, messaging…) : le gateway la refuse en écriture (409). Historique visible en lecture seule ; pour discuter, ouvrez-la dans sa surface d’origine ou créez une nouvelle session depuis le cockpit.') : null,
         h(SubAgentBar, { visible: sending, label: session.title, onStop: handleStop }),
-        h(Composer, { onSend: handleSend, onStop: handleStop, sending: sending, model: session.model || props.model, readOnly: readOnly })));
+        h(Composer, { onSend: handleSend, onStop: handleStop, sending: sending, model: session.model || props.model, provider: props.provider, providers: props.providers, onModelChange: props.onModelChange, readOnly: readOnly })));
   }
 
+
+  /* Sélecteur de modèle façon Desktop : liste provider/modèle filtrable,
+   * alimentée par GET /api/model/options. */
+  function ModelPicker(props) {
+    var openState = React.useState(false);
+    var open = openState[0], setOpen = openState[1];
+    var qState = React.useState('');
+    var qRaw = qState[0], setQ = qState[1];
+    var q = qRaw.trim().toLowerCase();
+    var current = props.value || {};
+    var label = current.model || 'Modèle du gateway';
+    var rows = [];
+    (props.providers || []).forEach(function (p) {
+      (p.models || []).forEach(function (m) {
+        if (q && (p.name + ' ' + (m.label || '') + ' ' + m.id).toLowerCase().indexOf(q) === -1) return;
+        rows.push({ provider: p.slug || '', providerName: p.name || p.slug || '', id: m.id, label: m.label || m.id });
+      });
+    });
+    return h('div', { style: { position: 'relative', display: 'inline-block' } },
+      h(KLAI.Button, { size: props.size || 'md', iconRight: 'chevron', onClick: function () { setOpen(!open); setQ(''); } }, label),
+      open ? h('div', { role: 'menu', 'aria-label': 'Choisir un modèle',
+        style: { position: 'absolute', zIndex: 40, top: 'calc(100% + 4px)', left: 0, minWidth: '300px', maxWidth: '380px', maxHeight: '320px', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--line-control)', borderRadius: 'var(--radius-md)', boxShadow: '0 10px 30px rgba(0,0,0,0.14)', padding: '6px', display: 'flex', flexDirection: 'column', gap: '2px' } },
+        h('input', { type: 'search', placeholder: 'Filtrer un modèle…', value: qRaw, autoFocus: true,
+          onChange: function (e) { setQ(e.target.value); },
+          style: { height: '30px', margin: '2px 4px 6px', padding: '0 8px', border: '1px solid var(--line-control)', borderRadius: 'var(--radius-sm)', background: 'var(--surface-muted)', color: 'var(--ink)', fontSize: '13px', fontFamily: 'var(--font-sans)', outline: 0 } }),
+        rows.length === 0
+          ? h('div', { style: { padding: '8px', fontSize: '12.5px', color: 'var(--ink-muted)' } }, (props.providers || []).length === 0 ? 'Aucun modèle exposé par le gateway.' : 'Aucun modèle ne correspond au filtre.')
+          : rows.map(function (r) {
+              var sel = r.id === current.model && (!current.provider || r.provider === current.provider);
+              return h('button', { key: r.provider + '/' + r.id, type: 'button', role: 'menuitemradio', 'aria-checked': sel ? 'true' : 'false',
+                onClick: function () { setOpen(false); if (props.onChange) props.onChange(r.id, r.provider); },
+                style: { display: 'flex', alignItems: 'center', gap: '8px', textAlign: 'left', padding: '7px 8px', border: 0, borderRadius: 'var(--radius-sm)', background: sel ? 'var(--surface-muted)' : 'transparent', cursor: 'pointer', color: 'var(--ink)', fontSize: '13px', fontFamily: 'var(--font-sans)' } },
+                h('span', { style: { flex: '1', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: sel ? 600 : 400 } }, r.label),
+                h('span', { style: { fontSize: '11.5px', color: 'var(--ink-muted)', whiteSpace: 'nowrap' } }, r.providerName),
+                sel ? h(KLAI.Icon, { name: 'check', size: 14 }) : null);
+            })) : null);
+  }
 
   /* ============================ Écran : réglages ============================ */
 
@@ -679,11 +716,16 @@
     var settings = st[0], setSettings = st[1];
     var test = React.useState(null);
     var testResult = test[0], setTestResult = test[1];
+    var mo = React.useState(null);
+    var providers = mo[0], setProviders = mo[1];
     var hasKlai = !!(global.klai && global.klai.settings);
 
     React.useEffect(function () {
       if (!hasKlai) return;
       global.klai.settings.get().then(setSettings);
+      if (global.klai.hermes && global.klai.hermes.modelOptions) {
+        global.klai.hermes.modelOptions().then(function (r) { if (r && r.ok) setProviders(r.providers || []); }).catch(function () {});
+      }
     }, []);
 
     function field(label, key, hint, type) {
@@ -704,10 +746,14 @@
       h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' } },
         field('URL du backend', 'hermesBaseUrl', 'Par défaut http://127.0.0.1:8642, le port annoncé par hermes gateway.'),
         field('Clé API', 'hermesApiKey', 'API_SERVER_KEY dans ~/.hermes/.env. Laisser vide si aucun clé n’est définie.', 'password'),
-        field('Modèle', 'model', 'Nom du modèle vu par Hermes (hermes-agent par défaut).'),
+        h('label', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+          h('span', { className: 'label' }, 'Modèle'),
+          settings ? h(ModelPicker, { providers: providers || [], value: { model: settings.model || '', provider: settings.provider || '' },
+            onChange: function (model, provider) { setSettings(Object.assign({}, settings, { model: model, provider: provider })); } }) : null,
+          h('span', { style: { fontSize: '12px', color: 'var(--ink-muted)' } }, 'Modèle utilisé pour les nouveaux tours. Changez-le aussi depuis le composer d’une session pour la verrouiller sur celle-ci.')),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' } },
           h(KLAI.Button, { variant: 'primary', icon: 'check', disabled: !settings,
-            onClick: function () { global.klai.settings.set({ hermesBaseUrl: settings.hermesBaseUrl, hermesApiKey: settings.hermesApiKey, model: settings.model })
+            onClick: function () { global.klai.settings.set({ hermesBaseUrl: settings.hermesBaseUrl, hermesApiKey: settings.hermesApiKey, model: settings.model, provider: settings.provider || '' })
               .then(function (m) { setSettings(m); if (props.onSaved) props.onSaved(); }); } }, 'Enregistrer'),
           h(KLAI.Button, { icon: 'refresh', disabled: !settings,
             onClick: function () { setTestResult({ pending: true });
@@ -753,6 +799,10 @@
     var backend = backendState[0], setBackend = backendState[1];
     var modelState = React.useState('hermes-agent');
     var model = modelState[0], setModel = modelState[1];
+    var providerState = React.useState('');
+    var provider = providerState[0], setProvider = providerState[1];
+    var providersState = React.useState([]);
+    var providers = providersState[0], setProviders = providersState[1];
     var loadingState = React.useState(true);
     var loading = loadingState[0], setLoading = loadingState[1];
     var groupsState = React.useState(toDemoGroups);
@@ -780,7 +830,7 @@
     function loadAll() {
       if (!hermes) { setLoading(false); setDemo(true); return; }
       setLoading(true);
-      var calls = [hermes.status(), hermes.sessions(), hermes.projects(), hermes.jobs()];
+      var calls = [hermes.status(), hermes.sessions(), hermes.projects(), hermes.jobs(), hermes.modelOptions()];
       var tries = Promise.allSettled
         ? Promise.allSettled(calls)
         : Promise.all(calls.map(function (p) {
@@ -793,7 +843,9 @@
         var sd = rs[1] && rs[1].status === 'fulfilled' ? rs[1].value : null;
         var pr = rs[2] && rs[2].status === 'fulfilled' ? rs[2].value : null;
         var jb = rs[3] && rs[3].status === 'fulfilled' ? rs[3].value : null;
+        var mo = rs[4] && rs[4].status === 'fulfilled' ? rs[4].value : null;
         if (st && st.ok) {
+          if (mo && mo.ok && mo.providers) setProviders(mo.providers);
           setGroups(groupRealSessions((sd && sd.ok && sd.sessions) || [], (pr && pr.ok && pr.projects) || []));
           setDemo(false);
           if (jb && jb.ok) setJobs(jb.jobs || []);
@@ -813,6 +865,7 @@
         global.klai.settings.get().then(function (s) {
           if (s && s.theme) document.documentElement.setAttribute('data-theme', s.theme);
           if (s && s.model) setModel(s.model);
+          if (s && s.provider) setProvider(s.provider);
         }).catch(function () {});
       }
 
@@ -903,6 +956,17 @@
       }).catch(function () {});
     }
 
+    function onModelChange(m, p) {
+      setModel(m);
+      setProvider(p || '');
+      if (global.klai && global.klai.settings) {
+        global.klai.settings.set({ model: m, provider: p || '' }).catch(function () {});
+      }
+      if (hermes && backendOk && selectedSession && selectedSession.id && hermes.setSessionModel) {
+        hermes.setSessionModel(selectedSession.id, m, p || '').catch(function () {});
+      }
+    }
+
     function approveItem(a, choice) {
       if (!hermes) return;
       hermes.approve(a.runId, a.requestId, choice).then(function () {
@@ -926,7 +990,7 @@
 
     var main;
     if (route === 'overview') main = h(OverviewScreen, { filter: filter, onFilter: setFilter, groups: groups, demo: demo, loading: loading, search: search, onOpenSession: openSession, onOpenGroup: openGroup, onNewSessionInGroup: function (g) { newSession(g); } });
-    else if (route === 'project') main = h(ProjectScreen, { onNavigate: navigate, model: model, session: selectedSession, group: activeGroup, backendOk: backendOk, onNewSession: newSession, onFork: forkCurrent, onTurnEnd: loadAll });
+    else if (route === 'project') main = h(ProjectScreen, { onNavigate: navigate, model: model, provider: provider, providers: providers, onModelChange: onModelChange, session: selectedSession, group: activeGroup, backendOk: backendOk, onNewSession: newSession, onFork: forkCurrent, onTurnEnd: loadAll });
     else main = h(SettingsScreen, { onBackend: setBackend, onSaved: loadAll });
 
     return h('div', { style: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--canvas)', color: 'var(--ink)', fontFamily: 'var(--font-sans)', fontSize: '13.5px' } },

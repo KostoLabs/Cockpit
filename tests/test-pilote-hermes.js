@@ -10,6 +10,8 @@ const { createHermesClient, mapSessionRow, mapMessageRow } = require('../pilote'
 
 const API_KEY = 'test-key';
 let approved = false;
+let lastChatBody = null;
+let lastModelLockBody = null;
 
 const server = http.createServer((req, res) => {
   const auth = req.headers.authorization || '';
@@ -20,6 +22,21 @@ const server = http.createServer((req, res) => {
   if (req.url === '/v1/models') {
     if (auth !== 'Bearer ' + API_KEY) return send(401, { error: 'unauthorized' });
     return send(200, { object: 'list', data: [{ id: 'hermes-agent', object: 'model' }] });
+  }
+  if (req.url === '/api/model/options') {
+    return send(200, { current_provider: 'nous', current_model: 'hermes-agent', providers: [
+      { slug: 'nous', name: 'Nous Portal', is_current: true, models: [{ id: 'hermes-agent', label: 'Hermes Agent' }, { id: 'minimax-m3', label: 'MiniMax M3' }] },
+      { slug: 'openai', name: 'OpenAI', models: [{ id: 'gpt-5.5', label: 'GPT-5.5' }, 'gpt-5.4'] }
+    ] });
+  }
+  const mlock = req.url.match(/^\/api\/sessions\/([^/]+)\/model$/);
+  if (mlock && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    return req.on('end', () => {
+      lastModelLockBody = JSON.parse(body || '{}');
+      send(200, { object: 'hermes.session.model_lock', session_id: decodeURIComponent(mlock[1]), runtime: { model: lastModelLockBody.model, provider: lastModelLockBody.provider || '' } });
+    });
   }
   if (req.url === '/v1/capabilities') return send(200, { features: { session_chat_streaming: true }, endpoints: { session_chat_stream: ['POST', '/api/sessions/{session_id}/chat/stream'] } });
   if (req.url.startsWith('/api/sessions?')) {
@@ -72,6 +89,13 @@ const server = http.createServer((req, res) => {
   if (m && req.method === 'POST') {
     const id = decodeURIComponent(m[1]);
     if (id === 's-cli') return send(409, { error: { code: 'permission_denied', message: 'session owned by another surface' } });
+    // NB : un listener 'data' sur la requête bloque le flush SSE du mock Node pour les
+    // flux longs (s-slow) ; on ne capture le body que pour s-api.
+    if (id === 's-api') {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => { try { lastChatBody = JSON.parse(body || '{}'); } catch { lastChatBody = {}; } });
+    }
     if (id === 's-slow') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       res.write('event: run.started\ndata: {"run_id":"run_slow"}\n\n');
@@ -174,10 +198,17 @@ server.listen(0, '127.0.0.1', async () => {
   check('createSession 201', cs.ok && cs.session.id === 'api_new_1' && cs.session.readOnly === false);
   const fk = await client.forkSession('s-api', 'copie');
   check('fork', fk.ok && fk.session.id === 'fork_1');
+  const mo = await client.modelOptions();
+  check('modelOptions providers', mo.ok && mo.providers.length === 2 && mo.providers[0].slug === 'nous' && mo.providers[0].isCurrent === true && mo.currentModel === 'hermes-agent');
+  check('modelOptions modèles (objet + string)', mo.providers[0].models.length === 2 && mo.providers[0].models[1].label === 'MiniMax M3' && mo.providers[1].models[1].id === 'gpt-5.4' && mo.providers[1].models[1].label === 'gpt-5.4');
+  const ml2 = await client.setSessionModel('s-api', 'minimax-m3', 'nous');
+  check('setSessionModel POST /api/sessions/{id}/model', ml2.ok === true && lastModelLockBody.model === 'minimax-m3' && lastModelLockBody.provider === 'nous');
 
   // --- envoi natif chat/stream avec approbation ---
   events.length = 0;
   approved = false;
+  SETTINGS.provider = 'nous';
+  SETTINGS.model = 'minimax-m3';
   const pSend = client.send('s-api', 'Bonjour');
   // attendre l'événement approval.request
   const t0 = Date.now();
@@ -191,6 +222,9 @@ server.listen(0, '127.0.0.1', async () => {
   const types = events.map(e => e.type).join(',');
   check('chat/stream : texte complet', rSend.ok === true && text === 'Bonjour approuvé');
   check('chat/stream : séquence start,delta,tool,approval,…,done', types === 'start,delta,tool,approval,delta,tool,done' && !events.some(e => e.type === 'error'));
+  check('chat/stream body contient model + provider', lastChatBody && lastChatBody.model === 'minimax-m3' && lastChatBody.provider === 'nous' && lastChatBody.message === 'Bonjour');
+  SETTINGS.provider = '';
+  SETTINGS.model = 'hermes-agent';
 
   // --- 409 -> lecture seule ---
   events.length = 0;

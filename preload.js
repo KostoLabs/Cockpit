@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('klai', {
     projects: () => ipcRenderer.invoke('klai:hermes:projects'),
     messages: (sessionId) => ipcRenderer.invoke('klai:hermes:messages', { sessionId }),
     jobs: () => ipcRenderer.invoke('klai:hermes:jobs'),
+    modelOptions: () => ipcRenderer.invoke('klai:hermes:model-options'),
+    setSessionModel: (sessionId, model, provider) => ipcRenderer.invoke('klai:hermes:set-session-model', { sessionId, model, provider }),
     createSession: (title) => ipcRenderer.invoke('klai:hermes:create-session', { title }),
     createProject: (name) => ipcRenderer.invoke('klai:hermes:create-project', { name }),
     fork: (sessionId, title) => ipcRenderer.invoke('klai:hermes:fork', { sessionId, title }),

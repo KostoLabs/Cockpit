@@ -13,6 +13,7 @@ const DEFAULTS = {
   hermesBaseUrl: 'http://127.0.0.1:8642',
   hermesApiKey: '',
   model: 'hermes-agent',
+  provider: '',
   theme: 'light',
   windowBounds: null // { x, y, width, height, maximized }
 };
@@ -68,6 +69,9 @@ function registerIpc() {
   ipcMain.handle('klai:hermes:projects', () => hermes.projects());
   ipcMain.handle('klai:hermes:messages', (_e, arg) => hermes.sessionMessages(String((arg && arg.sessionId) || '')));
   ipcMain.handle('klai:hermes:jobs', () => hermes.jobs());
+  ipcMain.handle('klai:hermes:model-options', () => hermes.modelOptions());
+  ipcMain.handle('klai:hermes:set-session-model', (_e, arg) =>
+    hermes.setSessionModel(String((arg && arg.sessionId) || ''), String((arg && arg.model) || ''), String((arg && arg.provider) || '')));
   ipcMain.handle('klai:hermes:create-session', (_e, arg) => hermes.createSession(String((arg && arg.title) || '')));
   ipcMain.handle('klai:hermes:create-project', (_e, arg) => hermes.createProject(String((arg && arg.name) || '')));
   ipcMain.handle('klai:hermes:fork', (_e, arg) => hermes.forkSession(String((arg && arg.sessionId) || ''), String((arg && arg.title) || '')));
