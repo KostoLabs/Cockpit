@@ -23,6 +23,13 @@ Pour savoir lequel prendre : menu  → *À propos de ce Mac* → ligne *Puce* ou
 
 Ouvrez le DMG et glissez **KostoLabs AI Cockpit** dans le dossier **Applications**.
 
+Tant que les runners macOS ne sont pas activés sur le dépôt, la page Releases propose une **pré-version en ZIP** (`…-mac-arm64.zip` ou `…-mac-x64.zip`), construite sans Mac et donc non signée. Décompressez-le, glissez l'app dans **Applications**, puis signez-la une fois sur votre Mac :
+
+```bash
+xattr -cr "/Applications/KostoLabs AI Cockpit.app"
+codesign --force --deep --sign - "/Applications/KostoLabs AI Cockpit.app"
+```
+
 ### 3. Premier lancement
 
 Tant que l'app n'est pas signée avec un certificat Apple Developer ID, macOS la bloque au premier lancement. Ouvrez-la une première fois, puis au choix :
@@ -114,9 +121,12 @@ L'écran Synchro liste alors les appareils et leurs sessions ; **Lire** affiche 
 
 ## Publier une version (mainteneurs)
 
-Les DMG sont construits par le workflow **Build macOS** sur un runner macOS de GitHub Actions, qui publie la release quand on pousse un tag `v*`.
+Le workflow **Build macOS** a deux voies :
 
-1. **Une seule fois** : autoriser les runners macOS pour le dépôt (*Settings → Actions* de l'organisation, et un budget Actions qui couvre macOS pour un dépôt privé). Sans cela, le job `mac` est annulé immédiatement.
+- `mac-zip` (runner Linux, toujours disponible) : à chaque push sur `Live` ou une branche `claude/…`, construit les ZIP arm64 et x64 non signés et les publie en **pré-version** `v<version>` ;
+- `mac` (runner macOS) : construit les DMG et ZIP signés et publie la release définitive quand on pousse un tag `v*`.
+
+1. **Une seule fois** : autoriser les runners macOS pour le dépôt (*Settings → Actions* de l'organisation, et un budget Actions qui couvre macOS pour un dépôt privé), puis créer la variable de dépôt `MAC_RUNNERS` = `true` (*Settings → Secrets and variables → Actions → Variables*). Sans elle, le job `mac` est ignoré.
 2. Mettre à jour `version` dans `package.json` et `CHANGELOG.md`, fusionner dans `Live`.
 3. Taguer et pousser :
 
