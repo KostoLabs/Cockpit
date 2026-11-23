@@ -44,6 +44,7 @@ Audit complet après v0.4.4 : plusieurs éléments étaient cassés ou non branc
 - **Données réelles dès que le backend répond** (même liste vide) ; le mode démo n'est montré que hors-ligne, et le chat répond en démo dans ce cas (auparavant : erreur 409/connrefused dans Electron).
 - **Aside et barre d'état réels** : approbations en attente, sessions en cours, jobs planifiés (`/api/jobs`), outils du tour (SSE), contexte %, compteurs réels ; la frise chronologique reflète le nombre de messages.
 - **Fenêtre** : géométrie (position/taille/maximisé) persistée dans `settings.json` et restaurée. **Thème** : `nativeTheme.themeSource` synchronisé (chrome de la fenêtre comprise).
+- **Sélecteur de modèle façon Desktop** : `GET /api/model/options` (providers + modèles, repli `/v1/models`), picker filtrable dans les réglages **et** dans le composer d'une session ; le choix est persisté (`model` + `provider` dans `settings.json`), envoyé à chaque tour (`chat/stream` honore `model`/`provider`) et verrouillable sur la session via `POST /api/sessions/{id}/model`.
 
 ## Version v0.4.4 (synchro des sessions Hermes)
 
@@ -77,6 +78,6 @@ Deux bundles prêts à glisser dans `/Applications` sont fournis : **mac-intel**
 
 1. Steer du tour en cours (`POST /v1/runs/{run_id}/steer`) depuis la barre sous-agent.
 2. Pièges/renommage/suppression de sessions (PATCH/DELETE /api/sessions/{id}).
-3. Piège de modèle par session (`POST /api/sessions/{id}/model`).
+3. Voix et TTS (`audio_api` encore éteint côté gateway).
 
 © KostoLabs Company
