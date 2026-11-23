@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Master ctx_handover sur macOS (launchd).
+     Copier dans ~/Library/LaunchAgents/, adapter les chemins, puis :
+     launchctl load ~/Library/LaunchAgents/ai.kostolabs.ctx-handover-master.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.kostolabs.ctx-handover-master</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>-m</string><string>ctx_handover</string>
+    <string>serve</string><string>--host</string><string>0.0.0.0</string><string>--port</string><string>8765</string><string>--fanout</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONPATH</key><string>/Users/VOUS/.hermes/plugins</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/tmp/ctx_handover-master.log</string>
+</dict>
+</plist>

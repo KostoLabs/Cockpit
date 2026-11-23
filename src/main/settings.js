@@ -15,7 +15,7 @@ const DEFAULTS = {
   pollSeconds: 15,
   window: null,
   openTabs: [],
-  sync: { enabled: false, transport: 'http', masterUrl: '', sshTarget: '', device: '' }
+  sync: { enabled: false, transport: 'http', masterUrl: '', sshTarget: '', sshCommand: 'python3 -m ctx_handover', device: '' }
 };
 const SECRET_KEYS = ['hermesApiKey', 'syncToken'];
 

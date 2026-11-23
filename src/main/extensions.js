@@ -6,6 +6,7 @@ const path = require('path');
 const { shell } = require('electron');
 const git = require('./git');
 const terminal = require('./terminal');
+const sync = require('./sync');
 
 const METHODS = {};
 const shutdownHooks = [terminal.killAll];
@@ -42,6 +43,8 @@ function register(ctx) {
       return { ok: true, text: buf.toString('utf-8'), size: st.size, mtime: st.mtimeMs };
     } catch (err) { return { ok: false, error: String(err.message) }; }
   };
+
+  sync.register(METHODS, ctx.settings, path.join(__dirname, '..', '..'));
 
   ctx.ipcMain.handle('klai:ext', async (_e, method, args) => {
     const fn = METHODS[method];

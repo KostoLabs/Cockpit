@@ -2,6 +2,18 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [0.8.0] — 2026-11-23 · Plugin ctx_handover
+
+### Ajouté
+- **Plugin Hermes `ctx_handover`** (`plugins/ctx_handover/`, Python standard) : synchro continue des sessions entre appareils via un master.
+  - Côté appareil : hooks de fin de tour → export (`hermes sessions export` ou API server) → poussée dédupliquée par hash ; scan de rattrapage périodique.
+  - Master : journal séquencé, dernière version par session, serveur HTTP à jeton avec **long-poll** (les autres appareils sont servis dès qu'une poussée arrive), TLS optionnel ; ou **SSH** (commandes distantes, fan-out du master vers les appareils).
+  - Reprise : outil `handover_context` pour l'agent, commande `/handover [list|resume|push|status]`, CLI `hermes ctx_handover …` / `python3 -m ctx_handover …`, unités launchd et systemd pour le master.
+  - 13 tests (HTTP et SSH de bout en bout, fan-out, long-poll, enregistrement dans un Hermes simulé).
+- **Écran Synchro** du Cockpit : appareils et dernière poussée, sessions des autres appareils, lecture de la transcription, **Reprendre ici** (nouvelle session nourrie du contexte), état du plugin local, installation et configuration du plugin en un clic.
+- Réglages : master de synchro (HTTP + jeton chiffré, ou SSH), nom de l'appareil, test.
+- Test e2e avec un vrai master Python et deux appareils simulés.
+
 ## [0.7.0] — 2026-11-23 · Parité Hermes Desktop
 
 ### Ajouté
