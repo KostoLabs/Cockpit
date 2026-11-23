@@ -138,7 +138,9 @@ function createFakeGateway(opts) {
       sessions.unshift(s);
       return send(res, 201, publicSession(s));
     }
-    let mm = p.match(/^\/api\/sessions\/([^/]+)(\/messages|\/fork|\/chat\/stream)?$/);
+    let mm = p.match(/^\/api\/sessions\/([^/]+)\/model$/);
+    if (mm && req.method === 'POST') { const b = await readBody(req); api.sessionModels[decodeURIComponent(mm[1])] = b; return send(res, 200, Object.assign({ session_id: mm[1] }, b)); }
+    mm = p.match(/^\/api\/sessions\/([^/]+)(\/messages|\/fork|\/chat\/stream)?$/);
     if (mm) {
       const s = sessions.find((x) => x.session_id === decodeURIComponent(mm[1]));
       if (!s) return send(res, 404, { error: { code: 'not_found', message: 'session inconnue' } });
@@ -167,6 +169,7 @@ function createFakeGateway(opts) {
     if (p === '/v1/runs' && req.method === 'POST') {
       if (features.run_submission === false) return send(res, 404, {});
       const b = await readBody(req);
+      api.lastRunBody = b;
       const s = sessions.find((x) => x.session_id === b.session_id);
       if (!s) return send(res, 404, { error: { code: 'not_found', message: 'session inconnue' } });
       if (s.source !== 'api_server') return send(res, 409, { error: { code: 'permission_denied', message: 'session owned by another surface' } });
@@ -215,11 +218,12 @@ function createFakeGateway(opts) {
     send(res, 404, { error: { code: 'not_found', message: p } });
   });
 
-  return {
-    server, sessions, runs, jobs, log,
+  const api = {
+    server, sessions, runs, jobs, log, lastRunBody: null, sessionModels: {},
     listen(port) { return new Promise((r) => server.listen(port || 0, '127.0.0.1', () => r(server.address().port))); },
     close() { for (const run of runs.values()) for (const l of run.listeners) l.end(); return new Promise((r) => server.close(r)); }
   };
+  return api;
 }
 
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }

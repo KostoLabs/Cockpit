@@ -41,7 +41,7 @@
       saveGateway().then(function () { return KC.bridge.hermes.status(); }).then(function (r) { setTest(r); });
     }
     function savePrefs() {
-      api.saveSettings({ userName: String(draft.userName || '').trim(), model: draft.model || '', pollSeconds: Math.max(5, Math.min(300, Number(draft.pollSeconds) || 15)) })
+      api.saveSettings({ userName: String(draft.userName || '').trim(), model: draft.model || '', provider: draft.model ? (draft.provider || '') : '', pollSeconds: Math.max(5, Math.min(300, Number(draft.pollSeconds) || 15)) })
         .then(function () { api.toast('Préférences enregistrées.'); });
     }
 
@@ -76,10 +76,12 @@
           h(Field, { label: 'Prénom', hint: 'Pour la salutation de la vue d’ensemble.' },
             h('input', { className: 'kc-input', value: draft.userName || '', onChange: function (e) { set('userName', e.target.value); } })),
           h(Field, { label: 'Modèle par défaut', hint: 'Envoyé avec chaque tour ; le composer permet de le changer par session.' },
-            h('select', { className: 'kc-select', value: draft.model || '', onChange: function (e) { set('model', e.target.value); } },
+            h('select', { className: 'kc-select', value: draft.model ? (draft.provider || '') + '\u0001' + draft.model : '',
+              onChange: function (e) { var v = e.target.value.split('\u0001'); setDraft(Object.assign({}, draft, v.length === 2 ? { provider: v[0], model: v[1] } : { provider: '', model: '' })); } },
               h('option', { value: '' }, 'Celui du gateway'),
-              models.map(function (mo) { return h('option', { key: mo.id + mo.provider, value: mo.id }, mo.label + (mo.provider ? ' · ' + mo.provider : '')); }),
-              draft.model && !models.some(function (mo) { return mo.id === draft.model; }) ? h('option', { value: draft.model }, draft.model) : null)),
+              models.map(function (mo) { return h('option', { key: mo.provider + mo.id, value: (mo.provider || '') + '\u0001' + mo.id }, mo.label + (mo.providerName || mo.provider ? ' · ' + (mo.providerName || mo.provider) : '')); }),
+              draft.model && !models.some(function (mo) { return mo.id === draft.model && (mo.provider || '') === (draft.provider || ''); })
+                ? h('option', { value: (draft.provider || '') + '\u0001' + draft.model }, draft.model + (draft.provider ? ' · ' + draft.provider : '')) : null)),
           h(Field, { label: 'Rafraîchissement (secondes)' },
             h('input', { className: 'kc-input is-mono', type: 'number', min: 5, max: 300, value: draft.pollSeconds || 15, onChange: function (e) { set('pollSeconds', e.target.value); } })),
           h('div', { className: 'kc-field' }, h('span', null, 'Thème'),

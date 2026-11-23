@@ -13,7 +13,7 @@ const EVENTS = ['klai:theme', 'klai:system-theme', 'klai:settings', 'klai:naviga
 
 const HERMES = ['status', 'capabilities', 'sessions', 'projects', 'messages', 'session', 'createSession',
   'renameSession', 'deleteSession', 'forkSession', 'send', 'stop', 'steer', 'approve', 'clarify', 'run',
-  'activeTurns', 'jobs', 'createJob', 'updateJob', 'deleteJob', 'jobAction', 'skills', 'toolsets', 'modelOptions'];
+  'activeTurns', 'jobs', 'createJob', 'updateJob', 'deleteJob', 'jobAction', 'skills', 'toolsets', 'modelOptions', 'setSessionModel'];
 
 const EXT = ['gitStatus', 'gitDiff', 'gitStage', 'gitCommit', 'termRun', 'termKill', 'syncStatus', 'syncFeed',
   'syncSession', 'syncTest', 'syncSave', 'hudOpen', 'hudClose', 'revealPath', 'openPath', 'readFile'];

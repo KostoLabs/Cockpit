@@ -41,6 +41,7 @@ async function startTurn(arg) {
       sessionId: sessionId,
       input: input,
       model: arg.model || settings.all().model || '',
+      provider: arg.model ? (arg.provider || '') : (settings.all().provider || ''),
       signal: entry.ctrl.signal,
       onEvent: function (ev) {
         if (ev.type === 'run') entry.runId = ev.runId;
@@ -99,7 +100,8 @@ const HERMES_METHODS = {
   jobAction: (id, a) => hermes.jobAction(String(id), String(a)),
   skills: () => hermes.skills(),
   toolsets: () => hermes.toolsets(),
-  modelOptions: () => hermes.modelOptions()
+  modelOptions: () => hermes.modelOptions(),
+  setSessionModel: (id, model, provider) => hermes.setSessionModel(String(id), String(model || ''), provider ? String(provider) : '')
 };
 
 function registerIpc() {
@@ -304,7 +306,7 @@ if (!app.requestSingleInstanceLock()) {
     hermes = createHermesClient({
       getConfig: () => {
         const s = settings.all();
-        return { baseUrl: s.hermesBaseUrl, apiKey: settings.secret('hermesApiKey'), model: s.model, profile: s.hermesProfile };
+        return { baseUrl: s.hermesBaseUrl, apiKey: settings.secret('hermesApiKey'), model: s.model, provider: s.provider, profile: s.hermesProfile };
       }
     });
     const t = settings.all().theme;

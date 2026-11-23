@@ -167,7 +167,10 @@
     var fileRef = React.useRef(null);
     var models = useModels(state.backend);
     var mk = 'model:' + props.sessionId;
+    var pk = 'provider:' + props.sessionId;
     var mm = React.useState(KC.local.get(mk, '') || (state.settings && state.settings.model) || ''), model = mm[0], setModel = mm[1];
+    var pp = React.useState(KC.local.get(pk, '') || (state.settings && state.settings.provider) || ''), provider = pp[0], setProvider = pp[1];
+    function choose(id, prov) { setModel(id); setProvider(prov || ''); KC.local.set(mk, id); KC.local.set(pk, prov || ''); }
     var lv = state.live[props.sessionId] || {};
     var busy = !!lv.busy;
     var ro = !!props.readOnly;
@@ -189,7 +192,7 @@
       if ((!text && !attachments.length) || busy || ro || offline) return;
       var full = text + attachments.map(function (a) { return '\n\n```' + (a.lang || '') + ' ' + a.name + '\n' + a.text + '\n```'; }).join('');
       setValue(''); setAttachments([]); hist.current = -1;
-      api.send(props.sessionId, full, model);
+      api.send(props.sessionId, full, model, provider);
     }
     function onFiles(list) {
       Array.prototype.forEach.call(list || [], function (f) {
@@ -202,9 +205,14 @@
       });
     }
     function pickModel(e) {
-      var items = [{ label: 'Par défaut du gateway', on: !model, run: function () { setModel(''); KC.local.set(mk, ''); } }];
-      models.slice(0, 30).forEach(function (m) {
-        items.push({ label: m.label + (m.provider ? ' · ' + m.provider : ''), on: model === m.id, run: function () { setModel(m.id); KC.local.set(mk, m.id); } });
+      var items = [{ label: 'Par défaut du gateway', on: !model, run: function () { choose('', ''); } }];
+      if (model && !ro) items.push({ label: 'Verrouiller ce modèle sur la session', icon: 'pin', run: function () {
+        KC.bridge.hermes.setSessionModel(props.sessionId, model, provider).then(function (r) {
+          api.toast(r.ok ? 'Modèle verrouillé sur la session.' : (r.status === 404 || r.status === 405 ? 'Ce gateway ne propose pas le verrou de modèle par session.' : 'Verrou refusé : ' + r.error), r.ok ? 'info' : 'error');
+        });
+      } }, '-');
+      models.slice(0, 40).forEach(function (m) {
+        items.push({ label: m.label + (m.providerName || m.provider ? ' · ' + (m.providerName || m.provider) : ''), on: model === m.id && (!provider || provider === m.provider), run: function () { choose(m.id, m.provider); } });
       });
       ov.menu(e, items);
     }

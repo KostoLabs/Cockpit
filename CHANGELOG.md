@@ -2,6 +2,15 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [1.0.1] — 2026-11-23 · Fusion de Live (PR #1)
+
+Intègre `Live`, où la PR #1 (reprise parallèle du pilote dans `pilote.js`) avait été fusionnée. L'architecture de la 1.0.0 couvre déjà ses fonctions (approbations, jobs, création et dérivation de session, géométrie de fenêtre) ; `pilote.js` et `tests/test-pilote-hermes.js` sont retirés au profit de `src/main/hermes-client.js` et de ses tests. Apports de la PR #1 repris :
+
+### Ajouté
+- **Fournisseur avec le modèle** : le choix du composer et des réglages retient le couple modèle + fournisseur (`/api/model/options`) et l'envoie à chaque tour. Sur `/v1/chat/completions`, un modèle sans fournisseur est ignoré par Hermes.
+- **Verrou du modèle sur une session** (`POST /api/sessions/{id}/model`), depuis le menu du modèle dans le composer. La route n'est pas documentée : un gateway qui ne la connaît pas affiche un message clair.
+- Test : fournisseur transmis, verrou de session (23 tests).
+
 ## [1.0.0] — 2026-11-23 · Distribution macOS
 
 ### Ajouté

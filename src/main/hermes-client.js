@@ -306,6 +306,7 @@ function createHermesClient(opts) {
     const onEvent = args.onEvent;
     const body = { input: args.input, session_id: args.sessionId };
     if (args.model) body.model = args.model;
+    if (args.provider) body.provider = args.provider;
     let res;
     try {
       res = await request('POST', '/v1/runs', body, { headers: { 'Idempotency-Key': crypto.randomUUID() }, signal: args.signal });
@@ -360,6 +361,7 @@ function createHermesClient(opts) {
     const onEvent = args.onEvent;
     const body = { input: args.input };
     if (args.model) body.model = args.model;
+    if (args.provider) body.provider = args.provider;
     let res;
     try {
       res = await request('POST', '/api/sessions/' + encodeURIComponent(args.sessionId) + '/chat/stream', body,
@@ -390,11 +392,10 @@ function createHermesClient(opts) {
     const c = getConfig();
     let res;
     try {
-      res = await request('POST', '/v1/chat/completions', {
-        model: args.model || c.model || 'hermes-agent',
-        messages: [{ role: 'user', content: args.input }],
-        stream: true
-      }, { headers: { 'X-Hermes-Session-Id': args.sessionId, 'Idempotency-Key': crypto.randomUUID(), Accept: 'text/event-stream' }, signal: args.signal });
+      // Sans « provider », un « model » nu est ignoré par /v1/chat/completions (doc API server).
+      const completion = { model: args.model || c.model || 'hermes-agent', messages: [{ role: 'user', content: args.input }], stream: true };
+      if (args.provider || c.provider) completion.provider = args.provider || c.provider;
+      res = await request('POST', '/v1/chat/completions', completion, { headers: { 'X-Hermes-Session-Id': args.sessionId, 'Idempotency-Key': crypto.randomUUID(), Accept: 'text/event-stream' }, signal: args.signal });
     } catch (err) { return failure(onEvent, err); }
     if (!res.ok) { const t = await res.text(); let d = null; try { d = JSON.parse(t); } catch { /* */ } return httpFailure(onEvent, res.status, d, t); }
     let done = false;
@@ -489,18 +490,25 @@ function createHermesClient(opts) {
     const d = r.data || {};
     const models = [];
     asList(d, ['providers', 'data']).forEach(function (p) {
+      const slug = p.slug || p.id || p.provider || p.name || '';
       asList(p, ['models']).forEach(function (m) {
         const id = typeof m === 'string' ? m : (m.id || m.name);
-        if (id) models.push({ id: id, provider: p.id || p.name || p.provider || '', label: (typeof m === 'object' && (m.label || m.display_name)) || id });
+        if (id) models.push({ id: id, provider: slug, providerName: p.name || slug, label: (typeof m === 'object' && (m.label || m.display_name)) || id });
       });
     });
-    return { ok: true, models: models, current: d.current || d.selected || null };
+    const cur = d.current || d.selected || {};
+    return { ok: true, models: models, current: { provider: d.current_provider || cur.provider || '', model: d.current_model || cur.model || '' } };
   }
+
+  /* Verrou du modèle sur une session (équivalent de « /model » dans la session).
+   * Route non documentée dans la doc API server : un 404 / 405 est renvoyé tel quel. */
+  const setSessionModel = (id, model, provider) => json('POST', '/api/sessions/' + encodeURIComponent(id) + '/model',
+    Object.assign({ model: model }, provider ? { provider: provider } : {}));
 
   return {
     capabilities, status, sessions, projects, messages, session, createSession, renameSession,
     deleteSession, forkSession, runTurn, run, stop, steer, approve, clarify,
-    jobs, createJob, updateJob, deleteJob, jobAction, skills, toolsets, modelOptions,
+    jobs, createJob, updateJob, deleteJob, jobAction, skills, toolsets, modelOptions, setSessionModel,
     resetCapabilities() { capsCache = null; }
   };
 }

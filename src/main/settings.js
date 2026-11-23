@@ -10,6 +10,7 @@ const DEFAULTS = {
   hermesBaseUrl: 'http://127.0.0.1:8642',
   hermesProfile: '',
   model: '',
+  provider: '',
   theme: 'light',
   userName: '',
   pollSeconds: 15,

@@ -169,6 +169,20 @@ test('capacités et modèles', async () => {
   await gw.close();
 });
 
+test('modèle + fournisseur envoyés avec le tour, verrou de session', async () => {
+  const { gw, client } = await setup();
+  const s = (await client.createSession({})).session;
+  await client.runTurn({ sessionId: s.id, input: 'x', model: 'hermes-4-405b', provider: 'nous', onEvent: () => {} });
+  assert.equal(gw.lastRunBody.model, 'hermes-4-405b');
+  assert.equal(gw.lastRunBody.provider, 'nous');
+  const mo = await client.modelOptions();
+  assert.equal(mo.models.find((m) => m.id === 'hermes-4-405b').provider, 'nous');
+  assert.equal(mo.current.provider, 'nous');
+  assert.equal((await client.setSessionModel(s.id, 'hermes-4-70b', 'nous')).ok, true);
+  assert.deepEqual(gw.sessionModels[s.id], { model: 'hermes-4-70b', provider: 'nous' });
+  await gw.close();
+});
+
 test('mappings tolérants', () => {
   assert.equal(mapSession({ id: 'x', source: 'discord' }).readOnly, true);
   assert.equal(mapSession({ id: 'x' }).readOnly, false);
