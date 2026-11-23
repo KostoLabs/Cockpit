@@ -4,20 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:">
-<title>KostoLabs AI — Cockpit</title>
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>KostoLabs AI Cockpit</title>
 <link rel="stylesheet" href="../design-system/fonts/fonts.css">
 <link rel="stylesheet" href="../design-system/tokens.css">
 <link rel="stylesheet" href="../design-system/components/bundle.css">
+<link rel="stylesheet" href="styles.css">
 </head>
-<body style="margin:0">
-<style>
-@keyframes kl-blink { 50% { opacity: 0; } }
-</style>
-<div id="root" style="height:100vh"></div>
+<body>
+<div id="root"></div>
 <script src="../vendor/react.production.min.js"></script>
 <script src="../vendor/react-dom.production.min.js"></script>
 <script src="../design-system/components/bundle.js"></script>
+<script src="lib/util.js"></script>
+<script src="lib/markdown.js"></script>
+<script src="lib/store.js"></script>
+<script src="components/shell.js"></script>
+<script src="screens/overview.js"></script>
+<script src="screens/project.js"></script>
+<script src="screens/settings.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
