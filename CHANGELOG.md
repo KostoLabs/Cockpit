@@ -2,6 +2,17 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [1.0.0] — 2026-11-23 · Distribution macOS
+
+### Ajouté
+- Packaging **electron-builder** : DMG et ZIP pour **Apple Silicon (arm64)** et **Intel (x64)**, icône, entitlements du runtime renforcé, macOS 12+.
+- Signature : Developer ID + notarisation si les secrets du dépôt sont présents, sinon **signature ad hoc** (`build/after-pack.js`) indispensable sur Apple Silicon ; `scripts/mac-adhoc-sign.sh` pour un ZIP construit hors macOS.
+- Workflow GitHub Actions **Build macOS** : tests (Node + plugin) sur Linux, build sur runner macOS, vérification `lipo` et `codesign`, artefacts, release automatique sur tag `v*` avec les notes du CHANGELOG.
+- Test e2e exécutable sur l'`app.asar` empaqueté (`SMOKE_APP`).
+
+### Supprimé
+- `scripts/buildmac.py` (assemblage manuel du bundle), remplacé par electron-builder.
+
 ## [0.8.0] — 2026-11-23 · Plugin ctx_handover
 
 ### Ajouté

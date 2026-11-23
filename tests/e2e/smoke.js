@@ -48,7 +48,7 @@ const { createFakeGateway } = require('../fake-gateway');
     hermesBaseUrl: 'http://127.0.0.1:' + port, userName: 'Quentin', ...syncCfg,
     secrets: { hermesApiKey: 'raw:' + Buffer.from('smoke-key').toString('base64'), syncToken: 'raw:' + Buffer.from('tok').toString('base64') }
   }));
-  const root = path.join(__dirname, '..', '..');
+  const root = process.env.SMOKE_APP || path.join(__dirname, '..', '..');
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [root, '--no-sandbox'],
