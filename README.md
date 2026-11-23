@@ -1,70 +1,162 @@
-# KostoLabs AI — Cockpit Hermes
+# KostoLabs AI Cockpit
 
-Application macOS (Apple Silicon et Intel) qui pilote [Hermes Agent](https://hermes-agent.nousresearch.com/) au design system **KostoLabs AI · Fin** : plusieurs projets en parallèle, sessions, approbations, sous-agents, revue Git, tâches planifiées, et synchro des sessions entre vos appareils.
+Application macOS qui pilote [Hermes Agent](https://hermes-agent.nousresearch.com/) (Nous Research) : plusieurs projets en parallèle, sessions, approbations, sous-agents, revue Git, tâches planifiées et synchro des sessions entre vos appareils. Interface au design system **KostoLabs AI · Fin**.
 
-- Journal des versions : [CHANGELOG.md](CHANGELOG.md) · audit de départ : [docs/AUDIT.md](docs/AUDIT.md)
-- Plugin de synchro : [plugins/ctx_handover/README.md](plugins/ctx_handover/README.md)
+Disponible pour Mac **Apple Silicon** (M1 et suivants) et **Intel**, macOS 12 ou plus récent.
+
+---
 
 ## Installer
 
-Les DMG et ZIP **arm64** (Apple Silicon) et **x64** (Intel) sont produits par le workflow *Build macOS* (onglet Actions, artefact `KostoLabs-AI-Cockpit-mac`, et page Releases pour les tags `v*`).
+### 1. Télécharger
 
-1. Ouvrir le DMG de votre architecture, glisser **KostoLabs AI Cockpit** dans Applications.
-2. Sans certificat Developer ID, l'app est signée en ad hoc : au premier lancement, clic droit → **Ouvrir**, ou `xattr -cr "/Applications/KostoLabs AI Cockpit.app"`.
-3. Un ZIP construit hors macOS n'est pas signé : `sh scripts/mac-adhoc-sign.sh "/Applications/KostoLabs AI Cockpit.app"`.
+Sur la page [**Releases**](https://github.com/KostoLabs/Cockpit/releases) du dépôt, prenez le DMG de votre Mac :
 
-macOS 12 ou plus récent. Pour une distribution signée et notarisée, renseigner les secrets du dépôt `MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` : le workflow signe et notarise alors automatiquement.
+| Votre Mac | Fichier |
+|---|---|
+| Puce Apple (M1, M2, M3, M4…) | `KostoLabs-AI-Cockpit-<version>-mac-arm64.dmg` |
+| Processeur Intel | `KostoLabs-AI-Cockpit-<version>-mac-x64.dmg` |
+
+Pour savoir lequel prendre : menu  → *À propos de ce Mac* → ligne *Puce* ou *Processeur*.
+
+### 2. Installer
+
+Ouvrez le DMG et glissez **KostoLabs AI Cockpit** dans le dossier **Applications**.
+
+### 3. Premier lancement
+
+Tant que l'app n'est pas signée avec un certificat Apple Developer ID, macOS la bloque au premier lancement. Ouvrez-la une première fois, puis au choix :
+
+- **Réglages Système → Confidentialité et sécurité**, en bas : *KostoLabs AI Cockpit a été bloquée* → **Ouvrir quand même** ;
+- ou dans le Terminal :
+
+  ```bash
+  xattr -cr "/Applications/KostoLabs AI Cockpit.app"
+  ```
+
+Les lancements suivants sont normaux.
+
+---
 
 ## Brancher Hermes
 
-1. `~/.hermes/.env` : `API_SERVER_ENABLED=true` et `API_SERVER_KEY=une-cle`.
-2. `hermes gateway` (port 8642 par défaut).
-3. Cockpit → ⌘, : URL, clé (chiffrée dans le trousseau), « Tester la connexion ».
+Le Cockpit parle au **gateway Hermes** (son API server).
 
-Le cockpit lit les sessions de toutes les surfaces Hermes (CLI, TUI, Desktop, messagerie). Celles d'une autre surface sont en lecture seule — Hermes refuse qu'un autre client écrive dedans — et « Reprendre ici » les dérive dans le cockpit.
+1. Dans `~/.hermes/.env`, activez l'API :
 
-## Ce que fait l'app
+   ```bash
+   API_SERVER_ENABLED=true
+   API_SERVER_KEY=choisissez-une-cle
+   ```
 
-| Écran | Contenu |
+2. Lancez le gateway :
+
+   ```bash
+   hermes gateway
+   ```
+
+3. Dans le Cockpit, ouvrez les réglages (**⌘,**), renseignez l'URL (`http://127.0.0.1:8642` par défaut) et la clé, puis **Tester la connexion**. La clé est rangée dans le trousseau macOS.
+
+Le Cockpit affiche les sessions de toutes les surfaces Hermes : CLI, TUI, Hermes Desktop, Telegram, Discord… Celles ouvertes ailleurs sont en lecture seule (Hermes n'autorise qu'un client à écrire dans une session) ; **Reprendre ici** les dérive dans le Cockpit.
+
+---
+
+## Synchroniser les sessions entre vos Mac
+
+Le plugin **ctx_handover** envoie en continu les sessions de chaque Mac vers un **master** (un Mac toujours allumé, un serveur, un VPS), qui les redistribue aux autres. Vous reprenez sur le MacBook ce que vous avez commencé sur le Mac Studio.
+
+**Sur le master** (Hermes n'y est pas nécessaire, Python 3 suffit) :
+
+```bash
+PYTHONPATH=/chemin/vers/Cockpit/plugins python3 -m ctx_handover init --role master
+PYTHONPATH=/chemin/vers/Cockpit/plugins python3 -m ctx_handover serve --host 0.0.0.0
+```
+
+`init` affiche un **jeton** à garder. Rendez le master joignable par Tailscale, un tunnel SSH ou en HTTPS (`--tls-cert`, `--tls-key`) ; n'ouvrez pas le port en clair sur Internet.
+
+**Sur chaque Mac**, dans le Cockpit :
+
+1. Réglages → *Synchro des sessions* : activez, renseignez l'URL du master et le jeton (ou une cible SSH), **Tester le master**.
+2. Écran **Synchro** → **Installer sur cet appareil**.
+3. Dans un terminal : `hermes plugins enable ctx_handover`, puis redémarrez `hermes gateway`.
+
+L'écran Synchro liste alors les appareils et leurs sessions ; **Lire** affiche une conversation, **Reprendre** ouvre une session ici avec tout son contexte. Dans une conversation Hermes, `/handover resume <titre>` fait la même chose. Détails, transport SSH et options : [plugins/ctx_handover/README.md](plugins/ctx_handover/README.md).
+
+---
+
+## Utiliser
+
+| Écran | Ce qu'on y fait |
 |---|---|
-| Vue d'ensemble (D′) | Salutation, filtres, index numéroté des projets (sessions regroupées par dossier), À traiter (approbations, questions, erreurs, réponses à relire), sous-agents, agenda du jour |
-| Projet (E′) | Onglets, côte à côte, chronologie, conversation Markdown, outils, raisonnement, approbations et questions en ligne, Orienter / Arrêter les sous-agents, composer (modèle par session, pièces jointes, historique), Activité : outils du tour, **Revoir** (Git : Non validé / Branche / Dernier tour, commit, push) |
-| Capacités | Compétences et jeux d'outils du gateway |
-| Messagerie | Conversations Telegram, Discord, Slack… par plateforme |
-| Artefacts | Fichiers écrits et liens cités, aperçu, Finder |
-| Tâches planifiées | Routines du planificateur Hermes : créer, exécuter, pause, supprimer |
-| Terminal | Commandes dans votre shell, dossier au choix |
-| Synchro | Appareils, sessions des autres appareils, lecture, reprise ici, installation du plugin `ctx_handover` |
-| HUD (⇧⌘H) | Fenêtre flottante toujours au premier plan |
+| **Vue d'ensemble** | Projets actifs (sessions regroupées par dossier), filtres, colonne *À traiter* : approbations, questions de l'agent, erreurs, réponses à relire ; sous-agents en cours ; tâches du jour |
+| **Projet** | Sessions en onglets ou côte à côte, conversation, outils utilisés, approbations, sous-agents (*Orienter*, *Arrêter*), choix du modèle, pièces jointes ; colonne *Activité* avec la revue Git (*Non validé*, *Branche*, *Dernier tour*, commit, push) |
+| **Capacités** | Compétences et outils dont dispose Hermes |
+| **Messagerie** | Conversations venues de Telegram, Discord, Slack… |
+| **Artefacts** | Fichiers écrits et liens cités par l'agent |
+| **Tâches planifiées** | Routines du planificateur : créer, exécuter, mettre en pause, supprimer |
+| **Terminal** | Commandes dans votre shell, dans le dossier d'un projet |
+| **Synchro** | Sessions de vos autres Mac |
+| **HUD** | Petite fenêtre flottante, toujours au premier plan |
 
-Raccourcis : ⌘K palette, ⌘N nouvelle session, ⌘F rechercher, ⌘. arrêter, ⌘W fermer l'onglet, ⌃⇥ onglet suivant, ⌘1–4 écrans, ⌘, réglages.
+| Raccourci | Action |
+|---|---|
+| ⌘K | Palette : aller à un projet, une session, une commande |
+| ⌘N | Nouvelle session |
+| ⌘F | Rechercher dans la conversation |
+| ⌘. | Arrêter le tour en cours |
+| ⌘W | Fermer l'onglet |
+| ⌃⇥ | Onglet suivant |
+| ⇧⌘H | Mode HUD |
+| ⌘1 à ⌘4 | Vue d'ensemble, Tâches, Capacités, Synchro |
+| ⌘, | Réglages |
+
+---
+
+## Publier une version (mainteneurs)
+
+Les DMG sont construits par le workflow **Build macOS** sur un runner macOS de GitHub Actions, qui publie la release quand on pousse un tag `v*`.
+
+1. **Une seule fois** : autoriser les runners macOS pour le dépôt (*Settings → Actions* de l'organisation, et un budget Actions qui couvre macOS pour un dépôt privé). Sans cela, le job `mac` est annulé immédiatement.
+2. Mettre à jour `version` dans `package.json` et `CHANGELOG.md`, fusionner dans `Live`.
+3. Taguer et pousser :
+
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+Le workflow lance les tests, construit les DMG et ZIP arm64 et x64, vérifie les architectures et les signatures, puis crée la release avec les notes du CHANGELOG.
+
+**Signature Apple** (supprime l'étape « Ouvrir quand même ») : ajouter les secrets du dépôt `MAC_CERT_P12_BASE64` (certificat Developer ID Application en base64), `MAC_CERT_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` et `APPLE_TEAM_ID`. Le workflow signe et notarise alors automatiquement ; sans eux, l'app est signée en ad hoc.
+
+**Sans GitHub Actions**, sur un Mac : `npm install && npm run dist:mac` produit les mêmes fichiers dans `dist/`. Un ZIP construit sous Linux (`npm run dist:mac:zip`) n'est pas signé : après l'avoir décompressé dans Applications, lancez `sh scripts/mac-adhoc-sign.sh`.
+
+---
 
 ## Développer
 
+Node.js 20 ou plus récent.
+
 ```bash
-npm install          # Electron 45, polices (postinstall)
-npm run dev          # avec DevTools
-node tests/fake-gateway.js --port 8642   # faux gateway Hermes pour travailler sans agent
-npm test             # 22 tests : client Hermes, SSE, renderer, Git
-npm run test:plugin  # 13 tests du plugin ctx_handover
-xvfb-run -a npm run e2e -- /tmp/captures   # parcours complet de l'app réelle (SMOKE_STEPS=overview,project,chat,review,term,sync)
-npm run dist:mac     # DMG + ZIP arm64/x64 (sur macOS ; hors macOS : npm run dist:mac:zip)
+npm install                               # Electron, polices
+npm run dev                               # l'app, avec les outils de développement
+node tests/fake-gateway.js --port 8642    # faux gateway Hermes pour travailler sans agent
+npm test                                  # tests : client Hermes, renderer, Git
+npm run test:plugin                       # tests du plugin ctx_handover
+xvfb-run -a npm run e2e -- /tmp/captures  # parcours complet de l'app (Linux)
 ```
 
 ```
-main.js                   fenêtres, menu, HUD, IPC sur liste blanche, tours de conversation
-preload.js                pont sandboxé : klai.hermes.*, klai.ext.*, klai.settings, klai.on
-src/main/hermes-client.js client du gateway : sessions, runs (approbations, stop, steer), jobs, skills
-src/main/sse.js           parseur Server-Sent Events
-src/main/settings.js      réglages, secrets via safeStorage
-src/main/git.js           revue Git (instantané de début de tour)
-src/main/terminal.js      exécuteur de commandes
-src/main/sync.js          pont vers ctx_handover (master HTTP/SSH, miroir local)
-renderer/                 React 18 sans build : lib/ (état, Markdown), components/, screens/
-design-system/            KostoLabs AI · Fin : tokens, composants window.KLAI, polices, logos
-plugins/ctx_handover/     plugin Hermes de synchro des sessions entre appareils
-build/                    entitlements, signature ad hoc (afterPack)
-.github/workflows/        build macOS arm64 + x64, release sur tag
+main.js                   fenêtres, menu, HUD, échanges avec l'interface
+preload.js                pont sécurisé entre l'interface et le reste de l'app
+src/main/                 client Hermes, réglages, revue Git, terminal, synchro
+renderer/                 interface (React 18, sans étape de build)
+design-system/            KostoLabs AI · Fin : couleurs, composants, polices, logos
+plugins/ctx_handover/     plugin Hermes de synchro des sessions
+build/                    signature et droits de l'app macOS
+.github/workflows/        build macOS et publication des releases
 ```
+
+Historique des versions : [CHANGELOG.md](CHANGELOG.md) · audit de la version de départ : [docs/AUDIT.md](docs/AUDIT.md).
 
 © KostoLabs Company
