@@ -1,5 +1,12 @@
 name: Build macOS (Apple Silicon + Intel)
 
+# Deux voies de build :
+# - « mac-zip » (runner Linux, toujours disponible) : ZIP arm64 et x64 non signés,
+#   publiés en pré-version sur la page Releases ;
+# - « mac » (runner macOS) : DMG + ZIP signés (ad hoc ou Developer ID + notarisation).
+#   Activé quand la variable de dépôt MAC_RUNNERS vaut « true »
+#   (Settings → Secrets and variables → Actions → Variables).
+
 on:
   push:
     tags: ['v*']
@@ -29,8 +36,60 @@ jobs:
       - name: Tests du plugin ctx_handover
         run: python3 -m unittest discover -s plugins/ctx_handover/tests -t plugins
 
+  mac-zip:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build ZIP macOS (arm64, x64), non signés
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run prebuild
+          npx electron-builder --mac zip --arm64 --x64 --publish never -c.mac.identity=null
+          ls -la dist/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KostoLabs-AI-Cockpit-mac-zip
+          path: dist/*.zip
+          retention-days: 30
+      - name: Pré-version GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="v$(node -p "require('./package.json').version")"
+          {
+            echo "Pré-version non signée, construite sans Mac. Pour un DMG signé, voir « Publier une version » dans le README."
+            echo
+            echo "**Installer** : décompresser le ZIP de votre Mac (arm64 = puce Apple, x64 = Intel), glisser l'app dans Applications, puis dans le Terminal :"
+            echo
+            echo '```'
+            echo 'xattr -cr "/Applications/KostoLabs AI Cockpit.app"'
+            echo 'codesign --force --deep --sign - "/Applications/KostoLabs AI Cockpit.app"'
+            echo '```'
+            echo
+            awk "/^## \\[${VER#v}\\]/{f=1;next}/^## \\[/{f=0}f" CHANGELOG.md
+          } > notes.md
+          if gh release view "$VER" >/dev/null 2>&1; then
+            if [ "$(gh release view "$VER" --json isPrerelease -q .isPrerelease)" = "true" ]; then
+              gh release upload "$VER" dist/*.zip --clobber
+              gh release edit "$VER" --notes-file notes.md
+            else
+              echo "Release $VER déjà publiée (build macOS) : ZIP non signés non ajoutés."
+            fi
+          else
+            gh release create "$VER" dist/*.zip --target "$GITHUB_SHA" --prerelease \
+              --title "KostoLabs AI Cockpit $VER (pré-version, non signée)" --notes-file notes.md
+          fi
+
   mac:
     needs: test
+    if: ${{ vars.MAC_RUNNERS == 'true' }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +136,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.zip --title "KostoLabs AI Cockpit $GITHUB_REF_NAME" \
-            --notes-file <(awk "/^## \\[${GITHUB_REF_NAME#v}\\]/{f=1;next}/^## \\[/{f=0}f" CHANGELOG.md) || \
-          gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/*.zip --clobber
+          awk "/^## \\[${GITHUB_REF_NAME#v}\\]/{f=1;next}/^## \\[/{f=0}f" CHANGELOG.md > notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/*.zip --clobber
+            gh release edit "$GITHUB_REF_NAME" --prerelease=false --title "KostoLabs AI Cockpit $GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.zip --title "KostoLabs AI Cockpit $GITHUB_REF_NAME" --notes-file notes.md
+          fi
