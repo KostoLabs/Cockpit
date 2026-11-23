@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"KLAI","components":[{"name":"Logo"},{"name":"Icon"},{"name":"Button"},{"name":"StatusChip"},{"name":"Badge"},{"name":"ProjectAvatar"},{"name":"NavItem"},{"name":"SearchField"},{"name":"Segmented"},{"name":"ContextMeter"},{"name":"Panel"}]} */
+/* @ds-bundle: {"format":4,"namespace":"KLAI","components":[{"name":"Logo"},{"name":"Icon"},{"name":"Button"},{"name":"StatusChip"},{"name":"Badge"},{"name":"ProjectAvatar"},{"name":"NavItem"},{"name":"SearchField"},{"name":"Segmented"},{"name":"ContextMeter"},{"name":"Panel"},{"name":"Greeting"},{"name":"Overline"},{"name":"ProgressLine"}]} */
 (function () {
   var React = window.React;
   var h = React.createElement;
@@ -106,7 +106,7 @@
   function StatusChip(props) {
     var s = STATUS[props.status] ? props.status : 'idle';
     return h('span', { className: cx('kl-chip', 'kl-chip-' + s, props.className), style: props.style },
-      s === 'running' ? h('span', { className: 'kl-chip-dot', 'aria-hidden': 'true' }) : null,
+      h('span', { className: 'kl-chip-dot', 'aria-hidden': 'true' }),
       has(props.children) ? props.children : (props.label || STATUS[s]));
   }
 
@@ -175,7 +175,39 @@
     return h('section', { className: cx('kl-panel', props.tone === 'strong' && 'kl-panel-strong', props.className), style: props.style }, head, props.children);
   }
 
-  var api = { Logo: Logo, Icon: Icon, Button: Button, StatusChip: StatusChip, Badge: Badge, ProjectAvatar: ProjectAvatar, NavItem: NavItem, SearchField: SearchField, Segmented: Segmented, ContextMeter: ContextMeter, Panel: Panel, iconNames: Object.keys(ICONS) };
+  var GREETINGS = {
+    night: ['Session nocturne', 'Encore debout, {name} ?', 'La nuit porte conseil', 'Calme plat sur les serveurs'],
+    morning: ['Bonjour {name}', 'Café et code, {name} ?', 'On attaque, {name} ?', 'Belle journée pour livrer'],
+    afternoon: ['Bon après-midi, {name}', 'On reprend, {name} ?', 'Prêt pour la suite ?', 'Deuxième souffle'],
+    evening: ['Bonsoir {name}', 'Dernière ligne droite ?', 'Encore un tour, {name} ?', 'Fin de journée, on fait le point']
+  };
+  function daySlot(hr) { return hr < 6 ? 'night' : hr < 12 ? 'morning' : hr < 18 ? 'afternoon' : hr < 23 ? 'evening' : 'night'; }
+  function pickGreeting(name, hour, seed) {
+    var pool = GREETINGS[daySlot(hour)];
+    var i = seed != null ? Math.abs(Number(seed)) % pool.length : Math.floor(Math.random() * pool.length);
+    var text = pool[i];
+    return name ? text.replace('{name}', name) : text.replace(/,? ?\{name\}/, '');
+  }
+  function Greeting(props) {
+    var hour = props.hour != null && props.hour !== '' ? Number(props.hour) : new Date().getHours();
+    var st = React.useState(function () { return pickGreeting(props.name, hour, props.seed); });
+    var size = Number(props.size) || 34;
+    return h(props.as || 'h1', { className: cx('kl-greeting', props.className), style: Object.assign({ fontSize: size, lineHeight: Math.round(size * 1.18) + 'px' }, props.style || {}) }, st[0]);
+  }
+
+  function Overline(props) {
+    var label = has(props.children) ? props.children : props.label;
+    var count = has(props.count) ? ' — ' + props.count : '';
+    return h(props.as || 'h2', { className: cx('kl-overline', props.className), style: props.style }, label, count);
+  }
+
+  function ProgressLine(props) {
+    var v = Math.max(0, Math.min(100, Number(props.value) || 0));
+    return h('div', { className: cx('kl-progress', props.className), role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': v, 'aria-label': props.label || null, style: props.style },
+      h('span', { className: 'kl-progress-fill', style: { width: v + '%' } }));
+  }
+
+  var api = { Logo: Logo, Icon: Icon, Button: Button, StatusChip: StatusChip, Badge: Badge, ProjectAvatar: ProjectAvatar, NavItem: NavItem, SearchField: SearchField, Segmented: Segmented, ContextMeter: ContextMeter, Panel: Panel, Greeting: Greeting, Overline: Overline, ProgressLine: ProgressLine, pickGreeting: pickGreeting, iconNames: Object.keys(ICONS) };
   window.KLAI = window.KLAI || {};
   Object.assign(window.KLAI, api);
 })();

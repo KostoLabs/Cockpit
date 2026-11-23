@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 tmp="$(mktemp -d)"
-python3 icongen.py "$tmp"
+python3 scripts/icongen.py "$tmp"
 cp "$tmp/AppIcon.icns"   design-system/logos/AppIcon.icns
 cp "$tmp/icon_256.png"   design-system/logos/icon_256.png
 cp "$tmp/icon_1024.png"  design-system/logos/icon_1024.png

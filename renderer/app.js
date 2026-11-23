@@ -483,8 +483,8 @@
     }, [sessionId]);
 
     React.useEffect(function () {
-      if (!global.klai || !global.klai.onHermesEvent) return;
-      return global.klai.onHermesEvent(function (ev) {
+      if (!global.klai || !global.klai.on) return;
+      return global.klai.on('klai:hermes:event', function (ev) {
         if (ev.session !== sessionRef.current) return;
         if (ev.type === 'delta') {
           setMessages(function (prev) {
@@ -542,7 +542,7 @@
       setMessages(function (prev) { return (prev || []).concat([{ who: 'user', text: text }]); });
       setSending(true);
       if (hermes) {
-        hermes.send(sessionRef.current, text).catch(function () { setSending(false); });
+        hermes.send({ sessionId: sessionRef.current, input: text }).catch(function () { setSending(false); });
       } else {
         setMessages(function (prev) { return (prev || []).concat([{ who: 'assistant', text: '', streaming: true }]); });
         setTimeout(function () {
@@ -562,7 +562,7 @@
     }
 
     function handleStop() {
-      if (hermes) hermes.stop(sessionRef.current);
+      if (hermes) hermes.stop({ sessionId: sessionRef.current });
       setSending(false);
     }
 
@@ -610,11 +610,11 @@
         h('p', { style: { margin: '2px 0 0', fontSize: '13px', color: 'var(--ink-muted)' } }, hasKlai ? 'Connexion au gateway Hermes (API OpenAI-compatible).' : 'Aperçu sans backend : les réglages vivent dans l’app Electron.')),
       h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' } },
         field('URL du backend', 'hermesBaseUrl', 'Par défaut http://127.0.0.1:8642, le port annoncé par hermes gateway.'),
-        field('Clé API', 'hermesApiKey', 'API_SERVER_KEY dans ~/.hermes/.env. Laisser vide si aucun clé n’est définie.', 'password'),
+        field('Clé API', 'hermesApiKey', (settings && settings.hasApiKey ? 'Clé enregistrée (chiffrée). ' : '') + 'API_SERVER_KEY dans ~/.hermes/.env. Laisser vide pour conserver la clé actuelle.', 'password'),
         field('Modèle', 'model', 'Nom du modèle vu par Hermes (hermes-agent par défaut).'),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' } },
           h(KLAI.Button, { variant: 'primary', icon: 'check', disabled: !settings,
-            onClick: function () { global.klai.settings.set({ hermesBaseUrl: settings.hermesBaseUrl, hermesApiKey: settings.hermesApiKey, model: settings.model })
+            onClick: function () { global.klai.settings.set(Object.assign({ hermesBaseUrl: settings.hermesBaseUrl, model: settings.model }, settings.hermesApiKey ? { hermesApiKey: settings.hermesApiKey } : {}))
               .then(function (m) { setSettings(m); if (props.onSaved) props.onSaved(); }); } }, 'Enregistrer'),
           h(KLAI.Button, { icon: 'refresh', disabled: !settings,
             onClick: function () { setTestResult({ pending: true });
@@ -717,11 +717,12 @@
       var offs = [];
       if (global.klai && global.klai.on) {
         offs.push(global.klai.on('klai:theme', function (t) { document.documentElement.setAttribute('data-theme', t); }));
-        offs.push(global.klai.on('klai:new-session', function () {
+        offs.push(global.klai.on('klai:command', function (c) {
+          if (c !== 'new-session') return;
           setRoute('project');
           loadAll();
         }));
-        offs.push(global.klai.on('klai:settings-open', function () { setRoute('settings'); }));
+        offs.push(global.klai.on('klai:navigate', function (r) { setRoute(r === 'settings' ? 'settings' : r === 'overview' ? 'overview' : 'project'); }));
       }
       return function () {
         if (timer) clearInterval(timer);
@@ -745,8 +746,8 @@
 
     /* Après un envoi, la session distante peut changer d'état : resynchroniser discrètement. */
     React.useEffect(function () {
-      if (!global.klai || !global.klai.onHermesEvent) return;
-      return global.klai.onHermesEvent(function (ev) {
+      if (!global.klai || !global.klai.on) return;
+      return global.klai.on('klai:hermes:event', function (ev) {
         if (ev.type === 'done' || ev.type === 'error' || ev.type === 'cancelled') loadAll();
       });
     }, []);

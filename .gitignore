@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+# binaires générés (scripts/setup-fonts.js, scripts/setup-icons.sh)
+design-system/fonts/*.woff2
+design-system/logos/*.icns
+design-system/logos/*.png

@@ -1,283 +1,237 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, nativeTheme, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, Menu, safeStorage, shell, screen } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
+const { createSettingsStore } = require('./src/main/settings');
+const { createHermesClient } = require('./src/main/hermes-client');
+const extensions = require('./src/main/extensions');
 
 const isDev = process.argv.includes('--dev');
-let win = null;
+// Dossier de données isolé (tests e2e, profils multiples) : KLAI_USER_DATA=/chemin
+if (process.env.KLAI_USER_DATA) app.setPath('userData', process.env.KLAI_USER_DATA);
+const windows = new Set();
+let mainWin = null;
+let settings = null;
+let hermes = null;
 
-/* ============================ Réglages persistants ============================ */
+/* ============================ Diffusion vers les fenêtres ============================ */
 
-const DEFAULTS = {
-  hermesBaseUrl: 'http://127.0.0.1:8642',
-  hermesApiKey: '',
-  model: 'hermes-agent',
-  theme: 'light'
-};
-
-function settingsPath() {
-  return path.join(app.getPath('userData'), 'settings.json');
-}
-
-function loadSettings() {
-  try {
-    const raw = fs.readFileSync(settingsPath(), 'utf-8');
-    return Object.assign({}, DEFAULTS, JSON.parse(raw));
-  } catch {
-    return Object.assign({}, DEFAULTS);
+function broadcast(channel, payload) {
+  for (const w of windows) {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
   }
 }
 
-function saveSettings(next) {
-  const merged = Object.assign(loadSettings(), next);
-  fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
-  fs.writeFileSync(settingsPath(), JSON.stringify(merged, null, 2), 'utf-8');
-  return merged;
-}
+/* ============================ Tours de conversation ============================
+ * Un tour par session à la fois. On garde l'AbortController (coupure du flux)
+ * et le run_id (stop coopératif, approbations, orientation). */
+const turns = new Map();
 
-/* ============================ Pilote Hermes (API OpenAI-compatible) ============================
- * Le gateway Hermes expose /v1 en OpenAI-compatible : chat/completions en
- * streaming SSE, sessions via X-Hermes-Session-Id, modèles sur /v1/models.
- * Toute la vie réseau reste dans le process main ; le renderer ne voit que
- * l'API ipc klai.hermes. Doc : hermes-agent.nousresearch.com/docs, API Server. */
-
-function hermesFetch(pathname, init) {
-  const s = loadSettings();
-  const url = s.hermesBaseUrl.replace(/\/+$/, '') + pathname;
-  const headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
-  if (s.hermesApiKey) headers.Authorization = 'Bearer ' + s.hermesApiKey;
-  return fetch(url, Object.assign({}, init, { headers }));
-}
-
-async function hermesStatus() {
+async function startTurn(arg) {
+  const sessionId = String(arg.sessionId || '');
+  const input = String(arg.input || '').trim();
+  if (!sessionId || !input) return { ok: false, error: 'session ou message manquant' };
+  if (turns.has(sessionId)) return { ok: false, error: 'Un tour est déjà en cours dans cette session.' };
+  const entry = { ctrl: new AbortController(), runId: null };
+  turns.set(sessionId, entry);
+  broadcast('klai:hermes:event', { session: sessionId, type: 'start' });
   try {
-    const res = await hermesFetch('/v1/models', { method: 'GET' });
-    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
-    const data = await res.json();
-    const models = (data.data || []).map(function (m) { return m.id; });
-    return { ok: true, models: models };
-  } catch (err) {
-    return { ok: false, error: String(err && err.message || err) };
-  }
-}
-
-/* Sessions réelles du gateway (doc : GET /api/sessions → { sessions: [SessionRow] }).
- * Lectures tolérantes : la réponse peut être {sessions:[…]} ou un tableau nu,
- * et chaque rangée suit au plus près le schéma SessionRow du serveur. */
-async function hermesSessions() {
-  try {
-    const res = await hermesFetch('/api/sessions', { method: 'GET' });
-    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
-    const data = await res.json();
-    const rows = Array.isArray(data) ? data : (data && data.sessions) || [];
-    const sessions = rows.filter(Boolean).map(function (s) {
-      return {
-        id: s.session_id || s.id || '',
-        title: s.display_title || s.title || 'Session sans titre',
-        workspace: s.workspace || '',
-        projectId: s.project_id || null,
-        model: s.model || '',
-        messageCount: s.message_count || 0,
-        updated: s.last_message_at || s.updated_at || 0,
-        pinned: !!s.pinned,
-        streaming: !!(s.is_streaming || s.active_stream_id),
-        attention: !!s.attention,
-        readOnly: !!s.read_only,
-        cli: !!s.is_cli_session,
-        contextPct: s.window_usage_percent || 0
-      };
-    });
-    return { ok: true, sessions: sessions };
-  } catch (err) {
-    return { ok: false, error: String(err && err.message || err) };
-  }
-}
-
-/* Projets Hermes (doc : GET /api/projects → { projects: [Project] }). */
-async function hermesProjects() {
-  try {
-    const res = await hermesFetch('/api/projects', { method: 'GET' });
-    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
-    const data = await res.json();
-    const rows = Array.isArray(data) ? data : (data && data.projects) || [];
-    return { ok: true, projects: rows.filter(Boolean).map(function (p) {
-      return { id: p.project_id || p.id || '', name: p.name || 'Projet', color: p.color || null };
-    }) };
-  } catch (err) {
-    return { ok: false, error: String(err && err.message || err) };
-  }
-}
-
-/* Historique d'une session (doc : GET /api/session?session_id=…&messages=1
- * → { session: SessionDetail } avec messages[]). Mapping tolérant des rangées :
- * le format exact des messages varie selon les surfaces, on normalise ici. */
-async function hermesSessionMessages(sessionId) {
-  try {
-    const res = await hermesFetch('/api/session?session_id=' + encodeURIComponent(sessionId) + '&messages=1', { method: 'GET' });
-    if (!res.ok) return { ok: false, error: 'HTTP ' + res.status };
-    const data = await res.json();
-    const detail = (data && data.session) || data || {};
-    const raw = detail.messages || data.messages || [];
-    const messages = raw.filter(Boolean).map(function (m) {
-      var who = m.role || m.role_type || (m.type === 'user' ? 'user' : 'assistant');
-      var text = m.content || m.text || m.body || (typeof m.message === 'string' ? m.message : '') || '';
-      if (who === 'model') who = 'assistant';
-      if (who !== 'user' && who !== 'assistant') who = 'assistant';
-      return { who: who, text: String(text), at: m.created_at || m.timestamp || 0 };
-    });
-    return { ok: true, messages: messages, session: {
-      title: detail.display_title || detail.title || '',
-      workspace: detail.workspace || '',
-      model: detail.model || '',
-      streaming: !!(detail.is_streaming || detail.active_stream_id),
-      readOnly: !!detail.read_only
-    } };
-  } catch (err) {
-    return { ok: false, error: String(err && err.message || err) };
-  }
-}
-
-/* Tournées en cours : un AbortController par session, pour le bouton Arrêter. */
-const running = new Map();
-
-function sendEvent(payload) {
-  if (win && !win.isDestroyed()) win.webContents.send('klai:hermes:event', payload);
-}
-
-async function hermesSend(sessionId, content) {
-  const s = loadSettings();
-  const key = crypto.randomUUID();
-  const ctrl = new AbortController();
-  running.set(sessionId, ctrl);
-  sendEvent({ session: sessionId, type: 'start' });
-  try {
-    const res = await hermesFetch('/v1/chat/completions', {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: {
-        'X-Hermes-Session-Id': sessionId,
-        'Idempotency-Key': key
-      },
-      body: JSON.stringify({
-        model: s.model || 'hermes-agent',
-        messages: [{ role: 'user', content: content }],
-        stream: true
-      })
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error('HTTP ' + res.status + ' ' + body.slice(0, 300));
-    }
-    // Lecture du flux SSE : tampon sur les lignes, "data: …" parsées une par une.
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const step = await reader.read();
-      if (step.done) break;
-      buf += decoder.decode(step.value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop(); // garde la ligne incomplète
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payloadStr = trimmed.slice(5).trim();
-        if (payloadStr === '[DONE]') {
-          sendEvent({ session: sessionId, type: 'done' });
-          return { ok: true };
-        }
-        try {
-          const chunk = JSON.parse(payloadStr);
-          const choice = chunk.choices && chunk.choices[0];
-          const delta = choice && choice.delta && choice.delta.content;
-          if (delta) sendEvent({ session: sessionId, type: 'delta', text: delta });
-          const finish = choice && choice.finish_reason;
-          if (finish && finish !== 'stop') {
-            sendEvent({ session: sessionId, type: 'notice', text: 'finish_reason : ' + finish });
-          }
-        } catch { /* ligne non-JSON (commentaire SSE, keep-alive) : ignorée */ }
+    return await hermes.runTurn({
+      sessionId: sessionId,
+      input: input,
+      model: arg.model || settings.all().model || '',
+      signal: entry.ctrl.signal,
+      onEvent: function (ev) {
+        if (ev.type === 'run') entry.runId = ev.runId;
+        broadcast('klai:hermes:event', Object.assign({ session: sessionId, runId: entry.runId }, ev));
       }
-    }
-    sendEvent({ session: sessionId, type: 'done' });
-    return { ok: true };
-  } catch (err) {
-    const aborted = err && (err.name === 'AbortError' || /aborted/i.test(String(err.message)));
-    if (aborted) {
-      sendEvent({ session: sessionId, type: 'cancelled' });
-      return { ok: false, cancelled: true };
-    }
-    sendEvent({ session: sessionId, type: 'error', text: String(err && err.message || err) });
-    return { ok: false, error: String(err && err.message || err) };
+    });
   } finally {
-    running.delete(sessionId);
+    turns.delete(sessionId);
+    broadcast('klai:hermes:event', { session: sessionId, type: 'end' });
   }
+}
+
+async function stopTurn(arg) {
+  const entry = turns.get(String(arg.sessionId || ''));
+  if (!entry) return { ok: true };
+  if (entry.runId) {
+    const r = await hermes.stop(entry.runId);
+    // Filet de sécurité : si le run ne s'arrête pas, on coupe le flux local.
+    setTimeout(function () { if (turns.get(arg.sessionId) === entry) entry.ctrl.abort(); }, 8000);
+    if (r.ok) return r;
+  }
+  entry.ctrl.abort();
+  return { ok: true };
+}
+
+function runIdFor(arg) {
+  if (arg.runId) return String(arg.runId);
+  const entry = turns.get(String(arg.sessionId || ''));
+  return entry && entry.runId;
 }
 
 /* ============================ IPC ============================ */
 
+const HERMES_METHODS = {
+  status: () => hermes.status(),
+  capabilities: () => hermes.capabilities(true),
+  sessions: (p) => hermes.sessions(p),
+  projects: () => hermes.projects(),
+  messages: (id) => hermes.messages(String(id || '')),
+  session: (id) => hermes.session(String(id || '')),
+  createSession: (body) => hermes.createSession(body || {}),
+  renameSession: (id, title) => hermes.renameSession(String(id), String(title || '')),
+  deleteSession: (id) => hermes.deleteSession(String(id)),
+  forkSession: (id, title) => hermes.forkSession(String(id), title),
+  send: (arg) => startTurn(arg || {}),
+  stop: (arg) => stopTurn(arg || {}),
+  steer: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.steer(id, String(arg.text || '')) : { ok: false, error: 'aucun run actif' }; },
+  approve: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.approve(id, arg) : { ok: false, error: 'aucun run actif' }; },
+  clarify: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.clarify(id, arg) : { ok: false, error: 'aucun run actif' }; },
+  run: (id) => hermes.run(String(id)),
+  activeTurns: () => Array.from(turns.entries()).map(([s, e]) => ({ session: s, runId: e.runId })),
+  jobs: () => hermes.jobs(),
+  createJob: (b) => hermes.createJob(b || {}),
+  updateJob: (id, b) => hermes.updateJob(String(id), b || {}),
+  deleteJob: (id) => hermes.deleteJob(String(id)),
+  jobAction: (id, a) => hermes.jobAction(String(id), String(a)),
+  skills: () => hermes.skills(),
+  toolsets: () => hermes.toolsets(),
+  modelOptions: () => hermes.modelOptions()
+};
+
 function registerIpc() {
-  ipcMain.handle('klai:settings:get', () => loadSettings());
+  ipcMain.handle('klai:hermes', async (_e, method, args) => {
+    const fn = HERMES_METHODS[method];
+    if (!fn) return { ok: false, error: 'méthode inconnue : ' + method };
+    try { return await fn.apply(null, Array.isArray(args) ? args : []); }
+    catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+  });
+  ipcMain.handle('klai:settings:get', () => settings.publicView());
   ipcMain.handle('klai:settings:set', (_e, next) => {
-    const merged = saveSettings(next || {});
-    if (merged.theme === 'dark' || merged.theme === 'light') {
-      if (win) win.webContents.send('klai:theme', merged.theme);
-    }
+    const before = settings.all();
+    const merged = settings.set(next || {});
+    if (next && ('hermesBaseUrl' in next || 'hermesApiKey' in next || 'hermesProfile' in next)) hermes.resetCapabilities();
+    if (merged.theme !== before.theme) applyTheme(merged.theme);
+    broadcast('klai:settings', merged);
     return merged;
   });
-  ipcMain.handle('klai:hermes:status', () => hermesStatus());
-  ipcMain.handle('klai:hermes:sessions', () => hermesSessions());
-  ipcMain.handle('klai:hermes:projects', () => hermesProjects());
-  ipcMain.handle('klai:hermes:messages', (_e, arg) => hermesSessionMessages(String(arg.sessionId || '')));
-  ipcMain.handle('klai:hermes:send', (_e, arg) => hermesSend(arg.sessionId, String(arg.content || '')));
-  ipcMain.handle('klai:hermes:stop', (_e, arg) => {
-    const ctrl = running.get(arg.sessionId);
-    if (ctrl) ctrl.abort();
-    return { ok: true };
+  ipcMain.handle('klai:app:info', () => ({
+    version: app.getVersion(), platform: process.platform, arch: process.arch,
+    electron: process.versions.electron, isDev: isDev
+  }));
+  ipcMain.handle('klai:app:openExternal', (_e, url) => {
+    if (typeof url === 'string' && /^(https?:|hermes:|mailto:)/.test(url)) return shell.openExternal(url).then(() => true);
+    return false;
+  });
+  extensions.register({ ipcMain, settings, broadcast, app, openHud, closeHud, isDev });
+}
+
+function applyTheme(theme) {
+  nativeTheme.themeSource = theme === 'dark' ? 'dark' : theme === 'system' ? 'system' : 'light';
+  broadcast('klai:theme', theme);
+}
+
+/* ============================ Fenêtres ============================ */
+
+function windowBounds() {
+  const saved = settings.all().window;
+  if (!saved || !saved.width) return { width: 1440, height: 920 };
+  const area = screen.getDisplayMatching(saved).workArea;
+  const visible = saved.x < area.x + area.width && saved.x + saved.width > area.x && saved.y < area.y + area.height && saved.y + saved.height > area.y;
+  return visible ? saved : { width: saved.width, height: saved.height };
+}
+
+function secureWebPreferences() {
+  return {
+    preload: path.join(__dirname, 'preload.js'),
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true,
+    spellcheck: false
+  };
+}
+
+function lockNavigation(win) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
   });
 }
 
-/* ============================ Fenêtre et menu ============================ */
-
-function createWindow() {
-  win = new BrowserWindow({
-    width: 1440,
-    height: 920,
+function createMainWindow() {
+  const b = windowBounds();
+  mainWin = new BrowserWindow(Object.assign({}, b, {
     minWidth: 1060,
     minHeight: 640,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 24 },
-    backgroundColor: '#e8e8eb',
+    trafficLightPosition: { x: 18, y: 28 },
+    backgroundColor: settings.all().theme === 'dark' ? '#0B0B0C' : '#FFFFFF',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
+    webPreferences: secureWebPreferences()
+  }));
+  windows.add(mainWin);
+  lockNavigation(mainWin);
+  if (settings.all().window && settings.all().window.maximized) mainWin.maximize();
+  mainWin.once('ready-to-show', () => mainWin.show());
+  mainWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  if (isDev) mainWin.webContents.openDevTools({ mode: 'detach' });
 
-  win.once('ready-to-show', () => win.show());
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-
-  if (isDev) win.webContents.openDevTools({ mode: 'detach' });
-
-  win.on('closed', () => { win = null; });
+  let saveTimer = null;
+  const saveBounds = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (!mainWin || mainWin.isDestroyed()) return;
+      settings.set({ window: Object.assign({}, mainWin.getNormalBounds(), { maximized: mainWin.isMaximized() }) });
+    }, 400);
+  };
+  mainWin.on('resize', saveBounds);
+  mainWin.on('move', saveBounds);
+  mainWin.on('closed', () => { windows.delete(mainWin); mainWin = null; });
 }
 
-app.whenReady().then(() => {
-  const settings = loadSettings();
-  nativeTheme.themeSource = settings.theme === 'dark' ? 'dark' : 'light';
-  registerIpc();
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+/* HUD : barre flottante toujours au premier plan, même renderer en mode compact. */
+let hudWin = null;
+function openHud(sessionId) {
+  if (hudWin && !hudWin.isDestroyed()) { hudWin.focus(); return; }
+  const area = screen.getPrimaryDisplay().workArea;
+  hudWin = new BrowserWindow({
+    width: 560, height: 420, x: area.x + area.width - 600, y: area.y + 60,
+    frame: false, alwaysOnTop: true, resizable: true, skipTaskbar: true,
+    transparent: false, backgroundColor: settings.all().theme === 'dark' ? '#0B0B0C' : '#FFFFFF',
+    webPreferences: secureWebPreferences()
+  });
+  hudWin.setAlwaysOnTop(true, 'floating');
+  windows.add(hudWin);
+  lockNavigation(hudWin);
+  hudWin.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { mode: 'hud', session: sessionId || '' } });
+  hudWin.on('closed', () => { windows.delete(hudWin); hudWin = null; if (mainWin) mainWin.show(); });
+  if (mainWin) mainWin.hide();
+}
+function closeHud() {
+  if (hudWin && !hudWin.isDestroyed()) hudWin.close();
+}
+function toggleHud() {
+  if (hudWin && !hudWin.isDestroyed()) closeHud(); else openHud('');
+}
+
+function send(channel, value) {
+  const w = BrowserWindow.getFocusedWindow() || mainWin;
+  if (w && !w.isDestroyed()) w.webContents.send(channel, value);
+}
+
+function buildMenu() {
+  const isMac = process.platform === 'darwin';
+  return Menu.buildFromTemplate([
     {
       label: 'Cockpit',
       submenu: [
         { role: 'about', label: 'À propos du Cockpit' },
         { type: 'separator' },
-        { label: 'Nouvelle session', accelerator: 'CmdOrCtrl+N', click: () => win && win.webContents.send('klai:new-session') },
-        { label: 'Rechercher', accelerator: 'CmdOrCtrl+K', click: () => win && win.webContents.send('klai:focus-search') },
-        { label: 'Réglages Hermes…', accelerator: 'CmdOrCtrl+,', click: () => win && win.webContents.send('klai:settings-open') },
+        { label: 'Réglages…', accelerator: 'CmdOrCtrl+,', click: () => send('klai:navigate', 'settings') },
         { type: 'separator' },
         { role: 'hide', label: 'Masquer le Cockpit' },
         { role: 'hideOthers', label: 'Masquer les autres' },
@@ -287,41 +241,79 @@ app.whenReady().then(() => {
       ]
     },
     {
+      label: 'Session',
+      submenu: [
+        { label: 'Nouvelle session', accelerator: 'CmdOrCtrl+N', click: () => send('klai:command', 'new-session') },
+        { label: 'Palette de commandes', accelerator: 'CmdOrCtrl+K', click: () => send('klai:command', 'palette') },
+        { label: 'Rechercher dans la conversation', accelerator: 'CmdOrCtrl+F', click: () => send('klai:command', 'find') },
+        { type: 'separator' },
+        { label: 'Arrêter le tour', accelerator: 'CmdOrCtrl+.', click: () => send('klai:command', 'stop') },
+        { label: 'Fermer l’onglet', accelerator: 'CmdOrCtrl+W', click: () => send('klai:command', 'close-tab') }
+      ]
+    },
+    {
       label: 'Édition',
       submenu: [
-        { role: 'undo', label: 'Annuler' },
-        { role: 'redo', label: 'Rétablir' },
-        { type: 'separator' },
-        { role: 'cut', label: 'Couper' },
-        { role: 'copy', label: 'Copier' },
-        { role: 'paste', label: 'Coller' },
-        { role: 'pasteAndMatchStyle', label: 'Coller et adapter le style' },
-        { type: 'separator' },
-        { role: 'delete', label: 'Supprimer' },
+        { role: 'undo', label: 'Annuler' }, { role: 'redo', label: 'Rétablir' }, { type: 'separator' },
+        { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' }, { role: 'paste', label: 'Coller' },
+        { role: 'pasteAndMatchStyle', label: 'Coller et adapter le style' }, { role: 'delete', label: 'Supprimer' },
         { role: 'selectAll', label: 'Tout sélectionner' }
       ]
     },
     {
       label: 'Affichage',
       submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
+        { label: 'Vue d’ensemble', accelerator: 'CmdOrCtrl+1', click: () => send('klai:navigate', 'overview') },
+        { label: 'Tâches planifiées', accelerator: 'CmdOrCtrl+2', click: () => send('klai:navigate', 'jobs') },
+        { label: 'Capacités', accelerator: 'CmdOrCtrl+3', click: () => send('klai:navigate', 'capabilities') },
+        { label: 'Synchro', accelerator: 'CmdOrCtrl+4', click: () => send('klai:navigate', 'sync') },
         { type: 'separator' },
-        { label: 'Thème clair', accelerator: 'CmdOrCtrl+L', click: () => { saveSettings({ theme: 'light' }); win && win.webContents.send('klai:theme', 'light'); } },
-        { label: 'Thème sombre', accelerator: 'CmdOrCtrl+D', click: () => { saveSettings({ theme: 'dark' }); win && win.webContents.send('klai:theme', 'dark'); } }
+        { label: 'Mode HUD', accelerator: 'CmdOrCtrl+Shift+H', click: toggleHud },
+        { type: 'separator' },
+        { label: 'Thème clair', click: () => { settings.set({ theme: 'light' }); applyTheme('light'); } },
+        { label: 'Thème sombre', click: () => { settings.set({ theme: 'dark' }); applyTheme('dark'); } },
+        { label: 'Thème du système', click: () => { settings.set({ theme: 'system' }); applyTheme('system'); } },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Taille réelle' }, { role: 'zoomIn', label: 'Agrandir' }, { role: 'zoomOut', label: 'Réduire' },
+        { type: 'separator' },
+        { role: 'reload', label: 'Recharger' }, { role: 'toggleDevTools', label: 'Outils de développement' }
       ]
     },
     {
       label: 'Fenêtre',
       submenu: [
-        { role: 'minimize', label: 'Réduire' },
-        { role: 'zoom', label: 'Zoom' },
-        { role: 'close', label: 'Fermer' }
+        { role: 'minimize', label: 'Réduire' }, { role: 'zoom', label: 'Zoom' },
+        ...(isMac ? [{ type: 'separator' }, { role: 'front', label: 'Tout ramener au premier plan' }] : [{ role: 'close', label: 'Fermer' }])
       ]
     }
-  ]));
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+  ]);
+}
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+/* ============================ Cycle de vie ============================ */
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); } });
+
+  app.whenReady().then(() => {
+    app.setAboutPanelOptions({ applicationName: 'KostoLabs AI Cockpit', applicationVersion: app.getVersion(), copyright: '© KostoLabs Company' });
+    settings = createSettingsStore({ file: path.join(app.getPath('userData'), 'settings.json'), safeStorage: safeStorage });
+    hermes = createHermesClient({
+      getConfig: () => {
+        const s = settings.all();
+        return { baseUrl: s.hermesBaseUrl, apiKey: settings.secret('hermesApiKey'), model: s.model, profile: s.hermesProfile };
+      }
+    });
+    const t = settings.all().theme;
+    nativeTheme.themeSource = t === 'dark' ? 'dark' : t === 'system' ? 'system' : 'light';
+    nativeTheme.on('updated', () => broadcast('klai:system-theme', nativeTheme.shouldUseDarkColors ? 'dark' : 'light'));
+    registerIpc();
+    Menu.setApplicationMenu(buildMenu());
+    createMainWindow();
+    app.on('activate', () => { if (!mainWin) createMainWindow(); else mainWin.show(); });
+  });
+
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('before-quit', () => { for (const e of turns.values()) e.ctrl.abort(); extensions.shutdown(); });
+}
