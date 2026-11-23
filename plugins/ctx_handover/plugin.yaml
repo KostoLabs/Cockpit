@@ -1,0 +1,15 @@
+name: ctx_handover
+version: "1.0.0"
+description: >-
+  Synchro continue des sessions Hermes entre appareils : chaque appareil pousse
+  ses sessions vers un master qui les redistribue aux autres (HTTP long-poll ou SSH).
+  L'outil handover_context et la commande /handover permettent de reprendre sur
+  un appareil le travail commencé sur un autre.
+author: KostoLabs Company
+provides_tools:
+  - handover_context
+provides_hooks:
+  - post_llm_call
+  - on_stream_end
+  - on_session_end
+  - on_session_finalize

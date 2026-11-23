@@ -1,10 +1,11 @@
-/* KostoLabs AI — generated from tokens.json */
+/* KostoLabs AI · Fin — generated from tokens.json */
 :root, [data-theme="light"] {
-  --canvas: #e8e8eb;
+  --canvas: #ffffff;
   --surface: #ffffff;
-  --surface-muted: #f4f4f6;
-  --surface-strong: #dcdcde;
-  --line: #dcdce0;
+  --surface-muted: #f6f6f5;
+  --surface-strong: #ededec;
+  --line: #e4e4e2;
+  --rule: #0a0a0b;
   --line-control: #8e8e95;
   --ink: #0a0a0b;
   --ink-muted: #4a4a4f;
@@ -16,15 +17,15 @@
   --danger: #a32018;
   --danger-soft: #f8e6e4;
   --focus: var(--ink);
-  --shadow-raised: 0 1px 2px rgba(10,10,11,0.08);
-  --shadow-pop: 0 12px 32px rgba(10,10,11,0.16);
+  --shadow-pop: 0 16px 40px rgba(10,10,11,0.12);
 }
 [data-theme="dark"] {
-  --canvas: #0a0a0b;
-  --surface: #141416;
-  --surface-muted: #1c1c1f;
-  --surface-strong: #26262a;
-  --line: #2a2a2f;
+  --canvas: #0b0b0c;
+  --surface: #0b0b0c;
+  --surface-muted: #151517;
+  --surface-strong: #1e1e21;
+  --line: #26262a;
+  --rule: #f5f5f5;
   --line-control: #6e6e76;
   --ink: #f5f5f5;
   --ink-muted: #a8a8ad;
@@ -36,32 +37,29 @@
   --danger: #ff8a80;
   --danger-soft: #351513;
   --focus: var(--ink);
-  --shadow-raised: 0 1px 2px rgba(0,0,0,0.5);
-  --shadow-pop: 0 12px 32px rgba(0,0,0,0.6);
+  --shadow-pop: 0 16px 40px rgba(0,0,0,0.6);
 }
 :root {
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
+  --space-16: 64px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
   --radius-pill: 999px;
   --font-display: Outfit, "Inter", system-ui, sans-serif;
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
-.display-xl { font-family: var(--font-display); font-size: 96px; line-height: 0.95; font-weight: 300; letter-spacing: -0.01em; }
-.display { font-family: var(--font-display); font-size: 48px; line-height: 52px; font-weight: 300; letter-spacing: -0.01em; }
-.title { font-family: var(--font-display); font-size: 26px; line-height: 32px; font-weight: 300; letter-spacing: -0.01em; }
-.heading { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 600; }
-.body { font-family: var(--font-sans); font-size: 14px; line-height: 22px; font-weight: 400; }
-.body-sm { font-family: var(--font-sans); font-size: 13px; line-height: 20px; font-weight: 400; }
-.label { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 500; }
-.mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px; font-weight: 400; }
+.display { font-family: var(--font-display); font-size: 56px; line-height: 60px; font-weight: 200; letter-spacing: -0.02em; }
+.greeting { font-family: var(--font-display); font-size: 34px; line-height: 40px; font-weight: 200; letter-spacing: -0.015em; }
+.title { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 300; letter-spacing: -0.01em; }
+.body { font-family: var(--font-sans); font-size: 14px; line-height: 22px; font-weight: 300; }
+.item { font-family: var(--font-sans); font-size: 13.5px; line-height: 20px; font-weight: 400; }
+.meta { font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; font-weight: 300; }
+.overline { font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 400; letter-spacing: 0.08em; }
+.mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px; font-weight: 300; }

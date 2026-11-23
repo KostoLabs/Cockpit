@@ -1,0 +1,14 @@
+# Master ctx_handover sur Linux (systemd utilisateur).
+# ~/.config/systemd/user/ctx-handover-master.service puis :
+# systemctl --user enable --now ctx-handover-master
+[Unit]
+Description=ctx_handover master (synchro des sessions Hermes)
+After=network-online.target
+
+[Service]
+Environment=PYTHONPATH=%h/.hermes/plugins
+ExecStart=/usr/bin/python3 -m ctx_handover serve --host 0.0.0.0 --port 8765 --fanout
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

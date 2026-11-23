@@ -2,43 +2,42 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 /*
- * Pont renderer <-> main.
- * - klai.hermes : appels au pilote Hermes réservés au process main (réseau,
- *   réglages). Le renderer reste isolé du Node et du réseau.
- * - canaux descendants (main -> renderer) : thème, focus, nouvelle session, réglages.
+ * Pont renderer <-> main (preload sandboxé : seul `electron` est requis).
+ * - klai.hermes.<méthode>(…) : appels au gateway Hermes, réalisés dans le main ;
+ * - klai.settings : réglages sans secrets ;
+ * - klai.ext.<méthode>(…) : git, terminal, synchro, HUD (src/main/extensions.js) ;
+ * - klai.on(canal, fn) : événements descendants, liste blanche.
  */
-const ALLOWED_EVENTS = ['klai:theme', 'klai:focus-search', 'klai:new-session', 'klai:settings-open'];
+const EVENTS = ['klai:theme', 'klai:system-theme', 'klai:settings', 'klai:navigate', 'klai:command',
+  'klai:hermes:event', 'klai:terminal', 'klai:sync'];
+
+const HERMES = ['status', 'capabilities', 'sessions', 'projects', 'messages', 'session', 'createSession',
+  'renameSession', 'deleteSession', 'forkSession', 'send', 'stop', 'steer', 'approve', 'clarify', 'run',
+  'activeTurns', 'jobs', 'createJob', 'updateJob', 'deleteJob', 'jobAction', 'skills', 'toolsets', 'modelOptions', 'setSessionModel'];
+
+const EXT = ['gitStatus', 'gitDiff', 'gitStage', 'gitCommit', 'termRun', 'termKill', 'syncStatus', 'syncFeed',
+  'syncSession', 'syncTest', 'syncSave', 'hudOpen', 'hudClose', 'revealPath', 'openPath', 'readFile'];
+
+const hermes = {};
+for (const m of HERMES) hermes[m] = (...args) => ipcRenderer.invoke('klai:hermes', m, args);
+const ext = {};
+for (const m of EXT) ext[m] = (...args) => ipcRenderer.invoke('klai:ext', m, args);
 
 contextBridge.exposeInMainWorld('klai', {
   on(channel, handler) {
-    if (!ALLOWED_EVENTS.includes(channel)) return () => {};
+    if (!EVENTS.includes(channel)) return () => {};
     const listener = (_event, value) => handler(value);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);
   },
-  onHermesEvent(handler) {
-    const listener = (_event, value) => handler(value);
-    ipcRenderer.on('klai:hermes:event', listener);
-    return () => ipcRenderer.removeListener('klai:hermes:event', listener);
-  },
-  hermes: {
-    status: () => ipcRenderer.invoke('klai:hermes:status'),
-    capabilities: () => ipcRenderer.invoke('klai:hermes:capabilities'),
-    sessions: () => ipcRenderer.invoke('klai:hermes:sessions'),
-    projects: () => ipcRenderer.invoke('klai:hermes:projects'),
-    messages: (sessionId) => ipcRenderer.invoke('klai:hermes:messages', { sessionId }),
-    jobs: () => ipcRenderer.invoke('klai:hermes:jobs'),
-    modelOptions: () => ipcRenderer.invoke('klai:hermes:model-options'),
-    setSessionModel: (sessionId, model, provider) => ipcRenderer.invoke('klai:hermes:set-session-model', { sessionId, model, provider }),
-    createSession: (title) => ipcRenderer.invoke('klai:hermes:create-session', { title }),
-    createProject: (name) => ipcRenderer.invoke('klai:hermes:create-project', { name }),
-    fork: (sessionId, title) => ipcRenderer.invoke('klai:hermes:fork', { sessionId, title }),
-    send: (sessionId, content) => ipcRenderer.invoke('klai:hermes:send', { sessionId, content }),
-    stop: (sessionId) => ipcRenderer.invoke('klai:hermes:stop', { sessionId }),
-    approve: (runId, requestId, choice) => ipcRenderer.invoke('klai:hermes:approve', { runId, requestId, choice })
-  },
+  hermes,
+  ext,
   settings: {
     get: () => ipcRenderer.invoke('klai:settings:get'),
     set: (next) => ipcRenderer.invoke('klai:settings:set', next)
+  },
+  app: {
+    info: () => ipcRenderer.invoke('klai:app:info'),
+    openExternal: (url) => ipcRenderer.invoke('klai:app:openExternal', url)
   }
 });

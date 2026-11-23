@@ -1,16 +1,90 @@
 {
   "name": "klai-cockpit",
-  "productName": "KostoLabs AI — Cockpit",
-  "version": "0.5.0",
-  "description": "Cockpit desktop Hermes habillé au design system KostoLabs AI.",
+  "productName": "KostoLabs AI Cockpit",
+  "version": "1.0.1",
+  "description": "Cockpit desktop Hermes habillé au design system KostoLabs AI · Fin.",
   "main": "main.js",
   "author": "KostoLabs Company",
   "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "postinstall": "node scripts/setup-fonts.js",
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "fonts": "node scripts/setup-fonts.js",
+    "icons": "sh scripts/setup-icons.sh",
+    "test": "node --test \"tests/*.test.js\"",
+    "test:plugin": "python3 -m unittest discover -s plugins/ctx_handover/tests -t plugins",
+    "dist:mac": "npm run prebuild && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:mac:zip": "npm run prebuild && electron-builder --mac zip --arm64 --x64 --publish never",
+    "prebuild": "node scripts/setup-fonts.js && sh scripts/setup-icons.sh",
+    "e2e": "node tests/e2e/smoke.js"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/outfit": "5.3.0",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "ai.kostolabs.cockpit",
+    "productName": "KostoLabs AI Cockpit",
+    "copyright": "© KostoLabs Company",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "src/**",
+      "renderer/**",
+      "vendor/**",
+      "design-system/**",
+      "!design-system/README.md",
+      "plugins/ctx_handover/**",
+      "!plugins/**/tests/**",
+      "!**/__pycache__/**",
+      "!design-system/logos/*.png",
+      "!design-system/logos/*.icns"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "design-system/logos/AppIcon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "minimumSystemVersion": "12.0",
+      "artifactName": "KostoLabs-AI-Cockpit-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "KostoLabs AI Cockpit ${version}",
+      "artifactName": "KostoLabs-AI-Cockpit-${version}-mac-${arch}.dmg"
+    },
+    "afterPack": "build/after-pack.js"
   }
 }

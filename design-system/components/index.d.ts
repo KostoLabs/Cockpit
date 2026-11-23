@@ -46,4 +46,16 @@ export declare function ContextMeter(props: ContextMeterProps): React.ReactEleme
 export interface PanelProps { title?: string; meta?: string; actionLabel?: string; actionHref?: string; tone?: 'default' | 'strong'; children?: React.ReactNode }
 export declare function Panel(props: PanelProps): React.ReactElement;
 
-declare global { interface Window { KLAI: { Logo: typeof Logo; Icon: typeof Icon; Button: typeof Button; StatusChip: typeof StatusChip; Badge: typeof Badge; ProjectAvatar: typeof ProjectAvatar; NavItem: typeof NavItem; SearchField: typeof SearchField; Segmented: typeof Segmented; ContextMeter: typeof ContextMeter; Panel: typeof Panel; iconNames: string[] } } }
+/** Salutation aléatoire selon l'heure (« Bonjour Quentin », « Session nocturne »…). */
+export interface GreetingProps { name?: string; size?: number; hour?: number; seed?: number; as?: 'h1' | 'h2' | 'p' }
+export declare function Greeting(props: GreetingProps): React.ReactElement;
+
+/** Surtitre mono en capitales, avec compte optionnel (« À TRAITER — 3 »). */
+export interface OverlineProps { label?: string; count?: string | number; as?: 'h2' | 'h3' | 'div' | 'p'; children?: React.ReactNode }
+export declare function Overline(props: OverlineProps): React.ReactElement;
+
+/** Progression sur un filet : 1px de piste, 3px de remplissage. */
+export interface ProgressLineProps { value: number; label?: string }
+export declare function ProgressLine(props: ProgressLineProps): React.ReactElement;
+
+declare global { interface Window { KLAI: { Logo: typeof Logo; Icon: typeof Icon; Button: typeof Button; StatusChip: typeof StatusChip; Badge: typeof Badge; ProjectAvatar: typeof ProjectAvatar; NavItem: typeof NavItem; SearchField: typeof SearchField; Segmented: typeof Segmented; ContextMeter: typeof ContextMeter; Panel: typeof Panel; Greeting: typeof Greeting; Overline: typeof Overline; ProgressLine: typeof ProgressLine; iconNames: string[] } } }
