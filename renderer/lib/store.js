@@ -249,7 +249,8 @@
         if (!B || !text.trim()) return;
         dispatch({ type: 'append', id: id, message: { who: 'user', text: text, at: Date.now() } });
         dispatch({ type: 'markRead', id: id });
-        var r = await B.hermes.send({ sessionId: id, input: text, model: model || '' });
+        var sess = stateRef.current.sessions.find(function (x) { return x.id === id; });
+        var r = await B.hermes.send({ sessionId: id, input: text, model: model || '', cwd: sess && sess.workspace || '' });
         if (r && r.ok === false && r.error && !r.readOnly && !r.cancelled) toast(r.error, 'error');
       }
 

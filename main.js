@@ -34,6 +34,8 @@ async function startTurn(arg) {
   const entry = { ctrl: new AbortController(), runId: null };
   turns.set(sessionId, entry);
   broadcast('klai:hermes:event', { session: sessionId, type: 'start' });
+  // Instantané Git pour la portée « Dernier tour » de la revue (dossier local seulement).
+  if (arg.cwd) { try { await extensions.git.snapshot(sessionId, String(arg.cwd)); } catch { /* hors Git */ } }
   try {
     return await hermes.runTurn({
       sessionId: sessionId,

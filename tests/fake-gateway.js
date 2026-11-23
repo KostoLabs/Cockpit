@@ -21,7 +21,8 @@ function seed() {
   return [
     S('koordo-recette', 'Recette Preprod App', '/Users/q/Developer/koordo', 'api_server', 3, [
       m('user', 'Lance la recette preprod'),
-      m('assistant', '12 tests lancés, **2 échecs** en cours de correction :\n\n1. `auth.spec.ts` — jeton expiré\n2. `upload.spec.ts` — délai dépassé', { tool_calls: [{ function: { name: 'terminal', arguments: '{"command":"npm test"}' } }] })
+      m('assistant', '12 tests lancés, **2 échecs** en cours de correction :\n\n1. `auth.spec.ts` — jeton expiré\n2. `upload.spec.ts` — délai dépassé', { tool_calls: [{ function: { name: 'terminal', arguments: '{"command":"npm test"}' } }, { function: { name: 'write_file', arguments: '{"path":"rapport-recette.md"}' } }] }),
+      m('assistant', 'Rapport détaillé : https://ci.example.com/koordo/recette/412')
     ], { is_streaming: true }),
     S('koordo-ears', 'Créer EARS pour enregistrement', '/Users/q/Developer/koordo', 'api_server', 14, [m('user', 'Rédige les exigences EARS'), m('assistant', 'Rédaction des exigences 4/9.')]),
     S('koordo-orga', 'Proposer une organisation', '/Users/q/Developer/koordo', 'cli', 90, [m('user', 'Propose une organisation'), m('assistant', 'Plan en 3 lots prêt à relire.')]),
@@ -41,6 +42,8 @@ function createFakeGateway(opts) {
   const key = opts.key === undefined ? 'test-key' : opts.key;
   const features = Object.assign({ chat_completions: true, run_submission: true, run_status: true, run_events_sse: true, run_stop: true, run_approval: true, session_chat_stream: true }, opts.features || {});
   const sessions = seed();
+  const remap = opts.remap || {};
+  sessions.forEach((x) => { if (remap[x.cwd]) x.cwd = remap[x.cwd]; });
   const runs = new Map();
   const jobs = [
     { job_id: 'j1', name: 'Veille réglementaire', prompt: 'Fais la veille réglementaire', schedule: '30 8 * * *', state: 'active', next_run_at: now() + 3600, last_run_at: now() - 82800, last_status: 'ok' },

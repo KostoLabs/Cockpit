@@ -16,7 +16,7 @@ const HERMES = ['status', 'capabilities', 'sessions', 'projects', 'messages', 's
   'activeTurns', 'jobs', 'createJob', 'updateJob', 'deleteJob', 'jobAction', 'skills', 'toolsets', 'modelOptions'];
 
 const EXT = ['gitStatus', 'gitDiff', 'gitStage', 'gitCommit', 'termRun', 'termKill', 'syncStatus', 'syncFeed',
-  'syncSession', 'syncTest', 'hudOpen', 'hudClose', 'revealPath', 'listDir', 'readFile'];
+  'syncSession', 'syncTest', 'syncSave', 'hudOpen', 'hudClose', 'revealPath', 'openPath', 'readFile'];
 
 const hermes = {};
 for (const m of HERMES) hermes[m] = (...args) => ipcRenderer.invoke('klai:hermes', m, args);

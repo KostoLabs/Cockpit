@@ -2,6 +2,20 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [0.7.0] — 2026-11-23 · Parité Hermes Desktop
+
+### Ajouté
+- **Tâches planifiées** (API Jobs) : liste avec planification, prochaine et dernière exécution, état ; création, modification, exécution immédiate, pause / reprise, suppression.
+- **Capacités** : compétences par catégorie (`/v1/skills`) et jeux d'outils avec leur état (`/v1/toolsets`), filtre.
+- **Messagerie** : conversations Telegram, Discord, Slack, WhatsApp, Signal… regroupées par plateforme, reprise dans le cockpit par dérivation.
+- **Artefacts** : fichiers écrits par les outils et liens cités dans les sessions récentes, aperçu, ouverture, affichage dans le Finder.
+- **Terminal** : exécution de commandes dans le shell de l'utilisateur, dossier au choix, sortie en continu, historique ↑/↓, interruption.
+- **Revoir** (colonne Activité de E′) : statut Git, fichiers modifiés par portée **Non validé / Branche / Dernier tour** (instantané `git stash create` pris au début de chaque tour), diff, indexation, commit, commit et push, « Demander à Hermes ».
+- Tests : revue Git sur dépôt temporaire, terminal et revue dans le test e2e (22 tests unitaires).
+
+### Corrigé
+- Alignement du tableau des tâches, champs de filtre au style du design system.
+
 ## [0.6.0] — 2026-11-23 · Écrans D′ et E′
 
 ### Ajouté

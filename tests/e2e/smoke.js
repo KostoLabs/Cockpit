@@ -12,7 +12,15 @@ const { createFakeGateway } = require('../fake-gateway');
 (async () => {
   const outDir = process.argv[2] || path.join(os.tmpdir(), 'klai-smoke');
   fs.mkdirSync(outDir, { recursive: true });
-  const gw = createFakeGateway({ key: 'smoke-key', tick: 30 });
+  // Dépôt Git temporaire pour le panneau « Revoir » (remplace ~/Developer/koordo).
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'klai-koordo-'));
+  const { execFileSync } = require('child_process');
+  const g = (...a) => execFileSync('git', ['-C', repo].concat(a), { stdio: 'pipe' });
+  g('init', '-q', '-b', 'main'); g('config', 'user.email', 'demo@example.com'); g('config', 'user.name', 'Demo');
+  fs.writeFileSync(path.join(repo, 'README.md'), '# Koordo\n'); g('add', '.'); g('commit', '-q', '-m', 'init');
+  fs.writeFileSync(path.join(repo, 'README.md'), '# Koordo\n\nRecette preprod.\n');
+  fs.writeFileSync(path.join(repo, 'rapport-recette.md'), '# Rapport\n12 tests, 2 échecs.\n');
+  const gw = createFakeGateway({ key: 'smoke-key', tick: 30, remap: { '/Users/q/Developer/koordo': repo } });
   const port = await gw.listen(0);
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'klai-ud-'));
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({
@@ -51,6 +59,21 @@ const { createFakeGateway } = require('../fake-gateway');
       await win.waitForSelector('text=Tout fonctionne', { timeout: 10000 });
       await win.screenshot({ path: path.join(outDir, '04-reponse.png') });
       console.log('ok conversation + approbation');
+    }
+    if (steps.includes('review')) {
+      await win.evaluate(() => window.__klaiNavigate('overview'));
+      await win.click('text=Recette Preprod App');
+      await win.waitForSelector('text=rapport-recette.md', { timeout: 10000 });
+      await win.screenshot({ path: path.join(outDir, '05-revue.png') });
+      console.log('ok revue git');
+    }
+    if (steps.includes('term')) {
+      await win.evaluate(() => window.__klaiNavigate('terminal'));
+      await win.fill('input[placeholder="git status"]', 'echo cockpit-$((20+22))');
+      await win.keyboard.press('Enter');
+      await win.waitForSelector('text=cockpit-42', { timeout: 10000 });
+      await win.waitForSelector('text=terminé', { timeout: 10000 });
+      console.log('ok terminal');
     }
     for (const r of (process.env.SMOKE_ROUTES || '').split(',').filter(Boolean)) {
       await win.evaluate((route) => window.__klaiNavigate && window.__klaiNavigate(route), r);
