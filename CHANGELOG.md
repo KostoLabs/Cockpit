@@ -11,7 +11,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sém
   - Un tour lancé depuis Hermes Desktop sur une session ouverte dans le Cockpit s'y affiche en direct.
   - Disponible quand le gateway est sur ce Mac et que la commande `hermes` est trouvée (`~/.local/bin`, Homebrew, shell de connexion, ou chemin indiqué).
 - Réglages → **Hermes local** : lecture des projets, écriture Desktop, dossier Hermes, chemin de la commande `hermes`, état du pont.
-- Faux gateway partagé (`tests/fake-shared-gateway.js`) et faux `hermes gateway attach` ; 5 tests du pont (34 au total) ; étape e2e « session Desktop » avec approbation.
+- Faux gateway partagé (`tests/fake-shared-gateway.js`) et faux `hermes gateway attach` ; 5 tests du pont (33 au total) ; étape e2e « session Desktop » avec approbation.
 
 ### Modifié
 - Une session d'une autre surface n'est plus en lecture seule quand le pont est disponible : bandeau « vos messages passent par le gateway local », « Dériver » reste proposé.
