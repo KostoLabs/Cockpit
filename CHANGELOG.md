@@ -2,6 +2,17 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [1.0.2] — 2026-11-24 · Retours du premier essai sur un vrai Hermes (0.23)
+
+### Corrigé
+- **Projets** : l'API server d'Hermes ne transmet ni le dossier ni le projet d'une session. Quand le gateway tourne sur la même machine, le Cockpit lit désormais en lecture seule `~/.hermes/projects.db` (projets nommés et leurs dossiers) et `~/.hermes/state.db` (dossier, racine Git et branche de chaque session), comme Hermes Desktop. Les sessions sont rattachées au projet dont un dossier les contient, sinon à leur dépôt Git ou à leur dossier ; « Sans dossier » passe en dernier. Réglages : `localStore` (`auto`, `on`, `off`) et `hermesHome`.
+- **Routines planifiées** (Sentry…) : les sessions de source `cron` sortent des projets et apparaissent dans *Tâches planifiées*, sous leur routine (« Voir les N exécutions »), ou dans « Autres exécutions planifiées ».
+- **« + N autres sessions »** déroule la liste dans la vue d'ensemble (25 de plus à chaque clic, « Réduire ») au lieu d'ouvrir la première session.
+- **Vue d'ensemble** : suppression des filets horizontaux absents de la maquette D′ et du tiret affiché quand un projet n'a pas de dossier.
+- **Choix du modèle** : fenêtre de sélection avec recherche, groupée par fournisseur, limitée aux fournisseurs authentifiés (`include_unconfigured=0`), modèle courant lu au format réel (`model`, `provider`). Dans une session en lecture seule, le bouton indique de passer par « Reprendre ici ».
+- **Sessions** : lecture paginée (`has_more`) au-delà de 200, jusqu'à 1 000.
+- Faux gateway aligné sur le format réel de l'API (clé `data`, `has_more`, catalogue de modèles), 28 tests, e2e avec un faux `~/.hermes`.
+
 ## [1.0.1] — 2026-11-23 · Fusion de Live (PR #1)
 
 Intègre `Live`, où la PR #1 (reprise parallèle du pilote dans `pilote.js`) avait été fusionnée. L'architecture de la 1.0.0 couvre déjà ses fonctions (approbations, jobs, création et dérivation de session, géométrie de fenêtre) ; `pilote.js` et `tests/test-pilote-hermes.js` sont retirés au profit de `src/main/hermes-client.js` et de ses tests. Apports de la PR #1 repris :

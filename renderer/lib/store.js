@@ -136,6 +136,7 @@
         }
         if (a.projects) next.projects = a.projects;
         if (a.jobs) next.jobs = a.jobs;
+        if (a.local !== undefined) next.localStore = a.local;
         return Object.assign({}, state, next);
       }
       case 'loading': return Object.assign({}, state, { loading: a.value });
@@ -207,14 +208,15 @@
           dispatch({ type: 'backend', backend: backend });
           if (!backend.ok) { dispatch({ type: 'data', sessions: [], projects: [] }); return; }
         }
-        var res = await Promise.all([B.hermes.sessions({ limit: 200 }), full ? B.hermes.projects() : null, B.hermes.jobs()]);
+        var res = await Promise.all([B.hermes.sessions({ limit: 200, max: 1000 }), B.hermes.jobs(), B.hermes.localMeta()]);
         if (!res[0].ok) {
           dispatch({ type: 'backend', backend: { ok: false, error: res[0].error, status: res[0].status } });
           dispatch({ type: 'loading', value: false });
           return;
         }
-        jobs = res[2] && res[2].ok ? res[2].jobs : [];
-        dispatch({ type: 'data', sessions: res[0].sessions, projects: res[1] && res[1].ok ? res[1].projects : undefined, jobs: jobs });
+        jobs = res[1] && res[1].ok ? res[1].jobs : [];
+        var local = res[2] && res[2].ok ? res[2] : null;
+        dispatch({ type: 'data', sessions: KC.enrichSessions(res[0].sessions, local), projects: local ? local.projects : [], jobs: jobs, local: !!local });
       }
 
       async function loadMessages(id, force) {

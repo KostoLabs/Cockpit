@@ -4,6 +4,7 @@ const path = require('path');
 const { createSettingsStore } = require('./src/main/settings');
 const { createHermesClient } = require('./src/main/hermes-client');
 const extensions = require('./src/main/extensions');
+const localStore = require('./src/main/local-store');
 
 const isDev = process.argv.includes('--dev');
 // Dossier de données isolé (tests e2e, profils multiples) : KLAI_USER_DATA=/chemin
@@ -101,6 +102,13 @@ const HERMES_METHODS = {
   skills: () => hermes.skills(),
   toolsets: () => hermes.toolsets(),
   modelOptions: () => hermes.modelOptions(),
+  // Projets et dossiers des sessions lus dans ~/.hermes (gateway local uniquement).
+  localMeta: () => {
+    const s = settings.all();
+    if (s.localStore === 'off') return { ok: false, error: 'désactivé' };
+    if (s.localStore !== 'on' && !localStore.isLocalUrl(s.hermesBaseUrl)) return { ok: false, error: 'gateway distant' };
+    return localStore.snapshot({ hermesHome: s.hermesHome });
+  },
   setSessionModel: (id, model, provider) => hermes.setSessionModel(String(id), String(model || ''), provider ? String(provider) : '')
 };
 

@@ -89,3 +89,22 @@ test('regroupement par dossier de travail, Accueil pour le dossier personnel', (
   assert.equal(g[0].live, 1);
   assert.equal(KC.shortPath('/Users/q/dev/koordo'), '~/dev/koordo');
 });
+
+test('enrichissement local : projets nommés, routines écartées des projets', () => {
+  const now = Date.now();
+  const api = [
+    { id: 'a', title: 'Recette', source: 'local', updated: now },
+    { id: 'c', title: 'Sentry — analyse approfondie', source: 'local', updated: now },
+    { id: 'e', title: 'Hors projet', source: 'local', updated: now - 1000 },
+    { id: 'z', title: 'Sans base', source: 'local', updated: now - 5000 }
+  ];
+  const localMeta = { sessions: {
+    a: { workspace: '/Users/q/Developer/koordo', cwd: '/Users/q/Developer/koordo/app', projectId: 'p1', branch: 'main', source: 'local' },
+    c: { workspace: '/Users/q', projectId: null, source: 'cron', createdSource: 'cron' },
+    e: { workspace: '/Users/q/autre', projectId: null, source: 'local' } } };
+  const enriched = KC.enrichSessions(api, localMeta);
+  assert.equal(enriched[1].cron, true);
+  const groups = KC.groupSessions(enriched, [{ id: 'p1', name: 'Koordo', path: '/Users/q/Developer/koordo' }], {});
+  assert.deepEqual(plain(groups.map((g) => g.name)), ['Koordo', 'autre', 'Sans dossier'], 'routine absente, « Sans dossier » en dernier');
+  assert.equal(groups[0].isProject, true);
+});

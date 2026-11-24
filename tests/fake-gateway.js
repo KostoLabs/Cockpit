@@ -33,7 +33,8 @@ function seed() {
       m('assistant', '## Conclusion pratique\n\nLe principal risque n’est pas le prix du BUILD : c’est de dépendre d’un prestataire pour la paie, avec des recours réduits et une sortie mal organisée.\n\n1. Fixer l’identité des parties et sécuriser le montage intragroupe.\n2. Protéger les fonds de paie et recalibrer la garantie d’impayés.\n3. Réécrire responsabilité, preuve et délais de recours.\n\n**En bref :** une base de négociation utilisable, mais pas une version prête pour signature.')
     ]),
     S('accueil-secrets', 'Retrouver secrets PREP', '/Users/q', 'telegram', 8, [m('user', 'Retrouve les secrets PREP'), m('assistant', 'Étape 3/8 · fichiers .env')]),
-    S('runner-maj', 'Mettre à jour le runner', '/Users/q/actions-runner', 'api_server', 240, [m('user', 'Mets à jour le runner'), m('assistant', 'Backend d’inférence indisponible.')], { end_reason: 'error' })
+    S('runner-maj', 'Mettre à jour le runner', '/Users/q/actions-runner', 'api_server', 240, [m('user', 'Mets à jour le runner'), m('assistant', 'Backend d’inférence indisponible.')], { end_reason: 'error' }),
+    S('cron_j1_20261123', 'Veille réglementaire', '/Users/q', 'cron', 600, [m('user', 'Fais la veille réglementaire'), m('assistant', '2 textes publiés au JO.')])
   ];
 }
 
@@ -65,6 +66,7 @@ function createFakeGateway(opts) {
   function publicSession(s) {
     const o = Object.assign({}, s);
     delete o.messages;
+    if (opts.hideCwd) delete o.cwd; // le vrai API server ne transmet pas le dossier de travail
     o.message_count = s.messages.length;
     return o;
   }
@@ -124,13 +126,20 @@ function createFakeGateway(opts) {
     if (p === '/v1/models') return send(res, 200, { object: 'list', data: [{ id: 'hermes-agent' }] });
     if (p === '/v1/capabilities') return send(res, 200, { object: 'hermes.api_server.capabilities', features: features, endpoints: {} });
     if (p === '/health/detailed') return send(res, 200, { status: 'ok', version: '0.15.2', readiness: { checks: {} } });
-    if (p === '/api/model/options') return send(res, 200, { providers: [{ id: 'nous', name: 'Nous Portal', models: [{ id: 'hermes-4-405b', label: 'Hermes 4 405B' }, { id: 'hermes-4-70b' }] }, { id: 'openrouter', models: ['anthropic/claude-sonnet-5.5'] }], current: { provider: 'nous', model: 'hermes-4-405b' } });
+    // Forme de hermes_cli/inventory.py : providers[{slug, name, is_current, authenticated, models}], model, provider.
+    if (p === '/api/model/options') return send(res, 200, { providers: [
+      { slug: 'nous', name: 'Nous Portal', is_current: true, authenticated: true, models: [{ id: 'hermes-4-405b', label: 'Hermes 4 405B' }, 'hermes-4-70b'] },
+      { slug: 'openrouter', name: 'OpenRouter', authenticated: true, models: ['anthropic/claude-sonnet-5.5'] },
+      { slug: 'xai', name: 'xAI', authenticated: false, models: ['grok-5'] }], model: 'hermes-4-405b', provider: 'nous' });
     if (p === '/v1/skills') return send(res, 200, [{ name: 'github-pr-workflow', description: 'Ouvrir et suivre une PR', category: 'Dev' }, { name: 'veille-juridique', description: 'Veille de jurisprudence', category: 'Recherche' }]);
     if (p === '/v1/toolsets') return send(res, 200, [{ name: 'core', label: 'Noyau', description: 'Fichiers et terminal', enabled: true, configured: true, tools: ['read_file', 'write_file', 'terminal'] }, { name: 'web', label: 'Web', description: 'Recherche web', enabled: true, configured: false, tools: ['web_search'] }]);
 
     if (p === '/api/sessions' && req.method === 'GET') {
-      const limit = Number(url.searchParams.get('limit') || 50);
-      return send(res, 200, { sessions: sessions.slice(0, limit).map(publicSession), total: sessions.length });
+      // Forme de api_server.py : {object: "list", data, limit, offset, has_more}.
+      const limit = Math.min(Number(url.searchParams.get('limit') || 50), opts.pageLimit || 200);
+      const offset = Number(url.searchParams.get('offset') || 0);
+      const page = sessions.slice(offset, offset + limit).map(publicSession);
+      return send(res, 200, { object: 'list', data: page, limit: limit, offset: offset, has_more: offset + limit < sessions.length });
     }
     if (p === '/api/sessions' && req.method === 'POST') {
       const b = await readBody(req);

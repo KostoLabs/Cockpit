@@ -20,7 +20,20 @@ const { createFakeGateway } = require('../fake-gateway');
   fs.writeFileSync(path.join(repo, 'README.md'), '# Koordo\n'); g('add', '.'); g('commit', '-q', '-m', 'init');
   fs.writeFileSync(path.join(repo, 'README.md'), '# Koordo\n\nRecette preprod.\n');
   fs.writeFileSync(path.join(repo, 'rapport-recette.md'), '# Rapport\n12 tests, 2 échecs.\n');
-  const gw = createFakeGateway({ key: 'smoke-key', tick: 30, remap: { '/Users/q/Developer/koordo': repo } });
+  const gw = createFakeGateway({ key: 'smoke-key', tick: 30, hideCwd: true, remap: { '/Users/q/Developer/koordo': repo } });
+  // Faux ~/.hermes : projets nommés (projects.db) et dossiers des sessions (state.db), comme Hermes Desktop.
+  const hermesHome = fs.mkdtempSync(path.join(os.tmpdir(), 'klai-hermes-home-'));
+  const { DatabaseSync } = require('node:sqlite');
+  const pdb = new DatabaseSync(path.join(hermesHome, 'projects.db'));
+  pdb.exec(`CREATE TABLE projects (id TEXT PRIMARY KEY, slug TEXT, name TEXT, primary_path TEXT, created_at INTEGER, archived INTEGER DEFAULT 0);
+    CREATE TABLE project_folders (project_id TEXT, path TEXT, PRIMARY KEY (project_id, path));`);
+  pdb.prepare('INSERT INTO projects VALUES (?, ?, ?, ?, 1, 0)').run('p1', 'koordo', 'Koordo', repo);
+  pdb.prepare('INSERT INTO projects VALUES (?, ?, ?, ?, 1, 0)').run('p2', 'genres', 'KostoLabs GenRes', '/Users/q/Developer/genres');
+  pdb.close();
+  const sdb = new DatabaseSync(path.join(hermesHome, 'state.db'));
+  sdb.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, created_source TEXT, cwd TEXT, git_branch TEXT, git_repo_root TEXT)');
+  for (const s of gw.sessions) sdb.prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?)').run(s.session_id, s.source, s.source, s.cwd || '', s.cwd === repo ? 'main' : '', s.cwd === repo ? repo : '');
+  sdb.close();
   const port = await gw.listen(0);
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'klai-ud-'));
   // Master ctx_handover réel (Python) avec deux sessions venues d'autres appareils.
@@ -52,7 +65,7 @@ const { createFakeGateway } = require('../fake-gateway');
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [root, '--no-sandbox'],
-    env: Object.assign({}, process.env, { KLAI_USER_DATA: userData, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' })
+    env: Object.assign({}, process.env, { KLAI_USER_DATA: userData, HERMES_HOME: hermesHome, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' })
   });
   const errors = [];
   const win = await app.firstWindow();
@@ -62,7 +75,9 @@ const { createFakeGateway } = require('../fake-gateway');
   const steps = (process.env.SMOKE_STEPS || 'overview').split(',');
   try {
     await win.waitForSelector('text=Koordo', { timeout: 15000 });
+    await win.waitForSelector('text=KostoLabs GenRes', { timeout: 5000 });
     await win.screenshot({ path: path.join(outDir, '01-vue-ensemble.png') });
+    if (await win.locator('main >> text=Veille réglementaire').count()) throw new Error('une exécution de routine apparaît dans les projets');
     console.log('ok vue d’ensemble');
     if (steps.includes('project')) {
       await win.click('text=Première analyse juridique');
@@ -87,6 +102,13 @@ const { createFakeGateway } = require('../fake-gateway');
       await win.waitForSelector('text=rapport-recette.md', { timeout: 10000 });
       await win.screenshot({ path: path.join(outDir, '05-revue.png') });
       console.log('ok revue git');
+    }
+    if (steps.includes('jobs')) {
+      await win.evaluate(() => window.__klaiNavigate('jobs'));
+      await win.click('text=Voir les 1 exécution');
+      await win.waitForSelector('text=2 textes publiés', { state: 'attached', timeout: 1000 }).catch(() => {});
+      await win.screenshot({ path: path.join(outDir, '09-taches.png') });
+      console.log('ok routines et exécutions');
     }
     if (steps.includes('term')) {
       await win.evaluate(() => window.__klaiNavigate('terminal'));

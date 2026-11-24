@@ -68,20 +68,40 @@
   KC.sourceLabel = function (s) { return SOURCE_LABEL[String(s || '').toLowerCase()] || s || ''; };
   KC.MESSAGING = /^(telegram|discord|slack|whatsapp|signal|matrix|teams|sms|email|mattermost|irc)$/i;
 
-  /* Regroupe les sessions par dossier de travail (ou projet Hermes s'il existe). */
+  /* Complète les sessions de l'API avec la base locale d'Hermes (dossier, dépôt Git,
+   * projet, source réelle), quand le gateway tourne sur cette machine. */
+  KC.enrichSessions = function (sessions, local) {
+    if (!local || !local.sessions) return sessions;
+    return sessions.map(function (s) {
+      var m = local.sessions[s.id];
+      if (!m) return s;
+      var cron = s.cron || m.source === 'cron' || m.createdSource === 'cron';
+      return Object.assign({}, s, {
+        workspace: s.workspace || m.workspace || m.cwd || '',
+        cwd: m.cwd || s.workspace || '',
+        branch: m.branch || '',
+        projectId: s.projectId || m.projectId || null,
+        cron: cron,
+        createdSource: m.createdSource || ''
+      });
+    });
+  };
+
+  /* Regroupe les sessions par projet Hermes, sinon par dépôt Git ou dossier de travail.
+   * Les exécutions de routines planifiées (source « cron ») n'y figurent pas. */
   KC.groupSessions = function (sessions, projects, live) {
     var projById = {};
     (projects || []).forEach(function (p) { if (p && p.id) projById[p.id] = p; });
     var byKey = {};
     var groups = [];
     (sessions || []).forEach(function (s) {
-      if (s.archived) return;
+      if (s.archived || s.cron || s.hidden) return;
       var proj = s.projectId && projById[s.projectId];
       var key = proj ? 'p:' + proj.id : 'w:' + (s.workspace || '');
       var g = byKey[key];
       if (!g) {
         var name = proj ? proj.name : (!s.workspace ? 'Sans dossier' : isHome(s.workspace) ? 'Accueil' : KC.baseName(s.workspace));
-        g = byKey[key] = { key: key, name: name, path: s.workspace || '', sessions: [] };
+        g = byKey[key] = { key: key, name: name, path: proj ? (proj.path || s.workspace || '') : (s.workspace || ''), isProject: !!proj, sessions: [] };
         groups.push(g);
       }
       g.sessions.push(s);
@@ -100,7 +120,8 @@
     groups.sort(function (a, b) {
       var aa = a.live + a.attention + a.errors > 0 ? 1 : 0;
       var bb = b.live + b.attention + b.errors > 0 ? 1 : 0;
-      return bb - aa || (b.last || 0) - (a.last || 0);
+      var na = a.key === 'w:' ? 1 : 0, nb = b.key === 'w:' ? 1 : 0; // « Sans dossier » en dernier
+      return bb - aa || na - nb || (b.last || 0) - (a.last || 0);
     });
     groups.forEach(function (g, i) { g.num = KC.pad2(i + 1); });
     return groups;

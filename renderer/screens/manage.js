@@ -54,8 +54,21 @@
     var ctx = KC.Store.use(), state = ctx.state, api = ctx.api;
     var ov = KC.useOverlay();
     var e = React.useState(null), editing = e[0], setEditing = e[1];
+    var o = React.useState({}), openRuns = o[0], setOpenRuns = o[1];
     var B = KC.bridge;
     var jobs = state.jobs;
+    // Exécutions : sessions de source « cron » rattachées à la routine par leur titre.
+    var cronSessions = state.sessions.filter(function (s) { return s.cron; });
+    function runsOf(j) {
+      var name = String(j.name || '').trim().toLowerCase();
+      return cronSessions.filter(function (s) {
+        var t = String(s.title || '').trim().toLowerCase();
+        return name && (t === name || t.indexOf(name) === 0);
+      }).sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+    }
+    var matched = {};
+    jobs.forEach(function (j) { runsOf(j).forEach(function (s) { matched[s.id] = true; }); });
+    var orphanRuns = cronSessions.filter(function (s) { return !matched[s.id]; });
     if (state.backend && !state.backend.ok) return h(Page, { overline: 'Tâches planifiées', title: 'Routines de l’agent' }, h(Offline));
 
     function act(j, action, label) {
@@ -83,10 +96,16 @@
         jobs.length === 0 ? h('div', { className: 'kc-empty' }, 'Aucune tâche planifiée.') : null,
         jobs.map(function (j) {
           var st = jobState(j);
-          return h('div', { key: j.id, className: 'kc-tr', style: { gridTemplateColumns: 'minmax(0, 2fr) 140px 150px 150px 110px 132px' } },
+          var runs = runsOf(j);
+          var isOpen = !!openRuns[j.id];
+          return h(React.Fragment, { key: j.id },
+          h('div', { className: 'kc-tr', style: { gridTemplateColumns: 'minmax(0, 2fr) 140px 150px 150px 110px 132px' } },
             h('span', { style: { display: 'flex', flexDirection: 'column', minWidth: 0 } },
               h('span', { className: 'kc-ellipsis', style: { fontWeight: 400 } }, j.name),
-              h('span', { className: 'kc-meta kc-ellipsis', title: j.prompt }, j.prompt)),
+              h('span', { className: 'kc-meta kc-ellipsis', title: j.prompt }, j.prompt),
+              runs.length ? h('button', { type: 'button', className: 'kc-link', style: { textAlign: 'left', marginTop: '2px' },
+                onClick: function () { var n = Object.assign({}, openRuns); n[j.id] = !isOpen; setOpenRuns(n); } },
+                (isOpen ? 'Masquer' : 'Voir') + ' les ' + runs.length + ' exécution' + (runs.length > 1 ? 's' : '')) : null),
             h('span', { className: 'kc-mono', style: { fontSize: '12px' } }, String(j.schedule)),
             h('span', { className: 'kc-meta' }, j.nextRun ? KC.fmtStamp(j.nextRun) : '—'),
             h('span', { className: 'kc-meta' }, j.lastRun ? KC.fmtAgo(j.lastRun) + (j.lastStatus ? ' · ' + j.lastStatus : '') : '—'),
@@ -104,8 +123,23 @@
                     });
                   } }
                 ]);
-              } })));
-        })));
+              } }))),
+          isOpen ? h('div', { style: { padding: '0 0 var(--space-3) var(--space-6)', borderBottom: '1px solid var(--line)' } }, runs.slice(0, 30).map(function (r) {
+            return h('button', { key: r.id, type: 'button', className: 'kc-plain kc-sess-row', style: { gridTemplateColumns: 'minmax(0, 1fr) 160px 104px' },
+              onClick: function () { api.open(r.id); } },
+              h('span', { className: 'kc-sess-label kc-ellipsis' }, r.title),
+              h('span', { className: 'kc-sess-step' }, KC.fmtStamp(r.updated)),
+              h(KLAI.StatusChip, { status: /error|fail/i.test(r.endReason || '') ? 'error' : 'done', label: /error|fail/i.test(r.endReason || '') ? 'Échec' : 'Terminée' }));
+          })) : null);
+        })),
+      orphanRuns.length ? h('section', { style: { padding: 'var(--space-8) 0 0' } },
+        h(KLAI.Overline, { label: 'Autres exécutions planifiées', count: orphanRuns.length }),
+        h('div', { className: 'kc-table', style: { marginTop: 'var(--space-3)' } }, orphanRuns.slice(0, 40).map(function (r) {
+          return h('button', { key: r.id, type: 'button', className: 'kc-plain kc-sess-row', style: { gridTemplateColumns: 'minmax(0, 1fr) 160px 104px' }, onClick: function () { api.open(r.id); } },
+            h('span', { className: 'kc-sess-label kc-ellipsis' }, r.title),
+            h('span', { className: 'kc-sess-step' }, KC.fmtStamp(r.updated)),
+            h(KLAI.StatusChip, { status: 'done', label: 'Terminée' }));
+        }))) : null);
   }
 
   /* ---------------- Capacités ---------------- */

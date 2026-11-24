@@ -11,6 +11,8 @@ const DEFAULTS = {
   hermesProfile: '',
   model: '',
   provider: '',
+  hermesHome: '',
+  localStore: 'auto',
   theme: 'light',
   userName: '',
   pollSeconds: 15,
