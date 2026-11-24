@@ -89,6 +89,26 @@
               options: [{ value: 'light', label: 'Clair' }, { value: 'dark', label: 'Sombre' }, { value: 'system', label: 'Système' }] })),
           h('div', { className: 'kc-row-actions' }, h(KLAI.Button, { variant: 'primary', size: 'sm', icon: 'check', onClick: savePrefs }, 'Enregistrer'))),
 
+        h('section', { className: 'kc-section' },
+          h(KLAI.Overline, { label: '03 — Hermes local', as: 'h2' }),
+          h('p', { className: 'kc-hint-text', style: { margin: 0 } }, 'Quand le gateway tourne sur ce Mac, le Cockpit lit vos projets dans ~/.hermes (lecture seule) et écrit dans les sessions Hermes Desktop par le gateway partagé, comme Desktop.'),
+          h('label', { className: 'kc-toggle' }, h('input', { type: 'checkbox', checked: (draft.localStore || 'auto') !== 'off',
+            onChange: function (e) { set('localStore', e.target.checked ? 'auto' : 'off'); } }), 'Lire les projets et dossiers des sessions (projects.db, state.db)'),
+          h('label', { className: 'kc-toggle' }, h('input', { type: 'checkbox', checked: (draft.desktopBridge || 'auto') !== 'off',
+            onChange: function (e) { set('desktopBridge', e.target.checked ? 'auto' : 'off'); } }), 'Écrire dans les sessions Hermes Desktop, CLI et messagerie'),
+          h(Field, { label: 'Dossier Hermes (facultatif)', hint: 'Vide : ~/.hermes, ou HERMES_HOME s’il est défini.' },
+            h('input', { className: 'kc-input is-mono', value: draft.hermesHome || '', spellCheck: false, placeholder: '~/.hermes', onChange: function (e) { set('hermesHome', e.target.value); } })),
+          h(Field, { label: 'Commande hermes (facultatif)', hint: 'Vide : recherche automatique (~/.local/bin, Homebrew, shell de connexion).' },
+            h('input', { className: 'kc-input is-mono', value: draft.hermesBin || '', spellCheck: false, placeholder: '/Users/vous/.local/bin/hermes', onChange: function (e) { set('hermesBin', e.target.value); } })),
+          h('div', { className: 'kc-meta' }, state.desktop.ok
+            ? 'Écriture Desktop disponible · ' + (state.desktop.bin || 'hermes') + (state.desktop.connected ? ' · connecté' : '')
+            : 'Écriture Desktop indisponible' + (state.desktop.error ? ' : ' + state.desktop.error : '') + '.'),
+          h('div', { className: 'kc-row-actions' }, h(KLAI.Button, { variant: 'primary', size: 'sm', icon: 'check', onClick: function () {
+            api.saveSettings({ localStore: draft.localStore || 'auto', desktopBridge: draft.desktopBridge || 'auto',
+              hermesHome: String(draft.hermesHome || '').trim(), hermesBin: String(draft.hermesBin || '').trim() })
+              .then(function () { api.toast('Hermes local enregistré.'); api.refresh(true); });
+          } }, 'Enregistrer'))),
+
         KC.SyncSettings ? h(KC.SyncSettings, null) : null,
 
         h('section', { className: 'kc-section' },

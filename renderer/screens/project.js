@@ -87,7 +87,7 @@
       it.text ? h('div', { className: 'kc-answer-meta' },
         h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'copy', iconOnly: true, label: 'Copier',
           onClick: function () { navigator.clipboard.writeText(it.text); api.toast('Réponse copiée.'); } }),
-        props.readOnly ? null : h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'branch', iconOnly: true, label: 'Créer une branche', onClick: function () { api.fork(props.sessionId); } }),
+        h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'branch', iconOnly: true, label: 'Créer une branche', onClick: function () { api.fork(props.sessionId); } }),
         props.onRegenerate ? h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'refresh', iconOnly: true, label: 'Régénérer', onClick: props.onRegenerate }) : null,
         h('span', { className: 'kc-stamp' }, [KC.fmtStamp(it.at), it.model].filter(Boolean).join(' · '))) : null);
   }
@@ -157,6 +157,48 @@
     return models;
   }
 
+  /* Sélecteur de modèle : recherche, regroupement par fournisseur, verrou de session. */
+  function ModelPicker(props) {
+    var q = React.useState(''), query = q[0], setQuery = q[1];
+    var ref = React.useRef(null);
+    React.useEffect(function () { ref.current && ref.current.focus(); }, []);
+    var qn = query.trim().toLowerCase();
+    var list = props.models.filter(function (m) {
+      return !qn || (m.id + ' ' + m.label + ' ' + (m.providerName || '') + ' ' + (m.provider || '')).toLowerCase().indexOf(qn) !== -1;
+    });
+    var groups = [];
+    var byProv = {};
+    list.forEach(function (m) {
+      var k = m.providerName || m.provider || 'Autres';
+      if (!byProv[k]) { byProv[k] = []; groups.push(k); }
+      byProv[k].push(m);
+    });
+    function item(label, sub, on, run, key) {
+      return h('button', { key: key, type: 'button', className: KC.cx('kc-palette-item', on && 'is-on'), onClick: function () { run(); props.onClose(); } },
+        h('span', { className: 'kc-ellipsis' }, label),
+        sub ? h('span', { className: 'kc-mono kc-subtle kc-ellipsis', style: { fontSize: '11px', maxWidth: '260px' } }, sub) : null,
+        on ? h('span', { className: 'kc-hint' }, 'actuel') : null);
+    }
+    return h('div', { className: 'kc-overlay', onMouseDown: function (e) { if (e.target === e.currentTarget) props.onClose(); },
+      onKeyDown: function (e) { if (e.key === 'Escape') props.onClose(); } },
+      h('div', { className: 'kc-palette kc-pop', role: 'dialog', 'aria-label': 'Choisir le modèle' },
+        h('input', { ref: ref, value: query, placeholder: 'Rechercher un modèle ou un fournisseur…', 'aria-label': 'Rechercher un modèle',
+          onChange: function (e) { setQuery(e.target.value); },
+          onKeyDown: function (e) { if (e.key === 'Enter' && list.length === 1) { props.onPick(list[0].id, list[0].provider); props.onClose(); } } }),
+        h('div', { className: 'kc-palette-list' },
+          !qn ? item('Modèle par défaut du gateway', props.defaultLabel || '', !props.model, function () { props.onPick('', ''); }, 'def') : null,
+          props.model && props.onLock ? item('Verrouiller « ' + props.model + ' » sur cette session', 'POST /api/sessions/{id}/model', false, props.onLock, 'lock') : null,
+          props.models.length === 0 ? h('div', { className: 'kc-palette-group kc-meta' }, 'Catalogue indisponible : le gateway n’a renvoyé aucun modèle.') : null,
+          groups.map(function (g) {
+            return [h('div', { key: 'g' + g, className: 'kc-palette-group' }, h(KLAI.Overline, { label: g, count: byProv[g].length, as: 'div' }))]
+              .concat(byProv[g].map(function (m) {
+                return item(m.label, m.label !== m.id ? m.id : '', props.model === m.id && (!props.provider || props.provider === m.provider),
+                  function () { props.onPick(m.id, m.provider); }, g + m.id);
+              }));
+          }),
+          qn && list.length === 0 ? h('div', { className: 'kc-palette-group kc-meta' }, 'Aucun modèle ne correspond.') : null)));
+  }
+
   function Composer(props) {
     var ctx = KC.Store.use(), state = ctx.state, api = ctx.api;
     var ov = KC.useOverlay();
@@ -204,20 +246,15 @@
         });
       });
     }
-    function pickModel(e) {
-      var items = [{ label: 'Par défaut du gateway', on: !model, run: function () { choose('', ''); } }];
-      if (model && !ro) items.push({ label: 'Verrouiller ce modèle sur la session', icon: 'pin', run: function () {
-        KC.bridge.hermes.setSessionModel(props.sessionId, model, provider).then(function (r) {
-          api.toast(r.ok ? 'Modèle verrouillé sur la session.' : (r.status === 404 || r.status === 405 ? 'Ce gateway ne propose pas le verrou de modèle par session.' : 'Verrou refusé : ' + r.error), r.ok ? 'info' : 'error');
-        });
-      } }, '-');
-      models.slice(0, 40).forEach(function (m) {
-        items.push({ label: m.label + (m.providerName || m.provider ? ' · ' + (m.providerName || m.provider) : ''), on: model === m.id && (!provider || provider === m.provider), run: function () { choose(m.id, m.provider); } });
+    var pk2 = React.useState(false), picking = pk2[0], setPicking = pk2[1];
+    function lockModel() {
+      KC.bridge.hermes.setSessionModel(props.sessionId, model, provider).then(function (r) {
+        api.toast(r.ok ? 'Modèle verrouillé sur la session.' : (r.status === 404 || r.status === 405 ? 'Ce gateway ne propose pas le verrou de modèle par session.' : 'Verrou refusé : ' + r.error), r.ok ? 'info' : 'error');
       });
-      ov.menu(e, items);
     }
 
     var placeholder = ro ? 'Lecture seule : session tenue par une autre surface Hermes.'
+      : props.viaDesktop && !busy && !offline ? 'Écrivez dans cette session Hermes Desktop' + (props.groupName ? ' (' + props.groupName + ')' : '') + '…'
       : offline ? 'Gateway injoignable.'
       : busy ? 'Hermes travaille… (Arrêter avec ⌘.)'
       : 'Donnez une tâche à Hermes' + (props.groupName ? ' dans ' + props.groupName : '') + '…';
@@ -244,8 +281,11 @@
       h('div', { className: 'kc-composer-bar' },
         h('input', { ref: fileRef, type: 'file', multiple: true, hidden: true, onChange: function (e) { onFiles(e.target.files); e.target.value = ''; } }),
         h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', iconOnly: true, label: 'Joindre un fichier texte', disabled: ro, onClick: function () { fileRef.current.click(); } }),
-        h(KLAI.Button, { variant: 'ghost', size: 'sm', iconRight: 'chevron', disabled: ro, onClick: pickModel, title: 'Modèle de cette session' },
+        h(KLAI.Button, { variant: 'ghost', size: 'sm', iconRight: 'chevron', disabled: ro, onClick: function () { setPicking(true); },
+          title: ro ? 'Session en lecture seule : « Reprendre ici » pour écrire et choisir le modèle' : 'Modèle de cette session' },
           model ? (models.find(function (m) { return m.id === model; }) || { label: model }).label : 'Modèle par défaut'),
+        picking ? h(ModelPicker, { models: models, model: model, provider: provider, onPick: choose, onLock: ro || props.viaDesktop ? null : lockModel,
+          defaultLabel: state.backend && state.backend.models && state.backend.models[0], onClose: function () { setPicking(false); } }) : null,
         h('div', { style: { flex: 1 } }),
         busy
           ? h(KLAI.Button, { variant: 'secondary', icon: 'stop', iconOnly: true, label: 'Arrêter le tour', onClick: function () { api.stop(props.sessionId); } })
@@ -300,12 +340,12 @@
           h('div', { className: 'kc-col' },
             messages === undefined ? h('div', { className: 'kc-notice' }, 'Chargement de l’historique…') : null,
             messages && items.length === 0 && !lv.busy ? h('div', { className: 'kc-blank', style: { padding: '24px 0' } },
-              h(KLAI.Overline, { label: session.readOnly ? 'Session en lecture seule' : 'Nouvelle session', as: 'div' }),
+              h(KLAI.Overline, { label: session.readOnly && !state.desktop.ok ? 'Session en lecture seule' : 'Nouvelle session', as: 'div' }),
               h('p', null, session.readOnly ? 'Cette session appartient à une autre surface Hermes ; dérivez-la pour continuer ici.' : 'Donnez une première tâche à Hermes dans le composer ci-dessous.')) : null,
             items.map(function (it, i) {
               if (it.kind === 'user') return h('div', { key: it.key, ref: function (n) { userRefs.current[it.key] = n; }, className: 'kc-bubble' }, it.text);
               return h(Answer, { key: it.key, item: it, sessionId: id, readOnly: session.readOnly,
-                onRegenerate: i === lastAnswerIdx && lastUser && !session.readOnly && !lv.busy ? function () { api.send(id, lastUser); } : null });
+                onRegenerate: i === lastAnswerIdx && lastUser && (!session.readOnly || state.desktop.ok) && !lv.busy ? function () { api.send(id, lastUser); } : null });
             }),
             lv.busy ? h('div', { className: 'kc-answer' },
               h(ToolList, { tools: lv.tools, open: true }),
@@ -320,9 +360,12 @@
       h('div', { className: 'kc-bottom' },
         running.map(function (w, i) { return h(SubagentBar, { key: i, worker: w, sessionId: id }); }),
         session.readOnly ? h('div', { className: 'kc-ro-note' },
-          h('span', { style: { flex: 1 } }, 'Session tenue par ' + (KC.sourceLabel(session.source) || 'une autre surface') + ' : visible en lecture seule.'),
-          h(KLAI.Button, { variant: 'secondary', size: 'sm', icon: 'branch', onClick: function () { api.fork(id); } }, 'Reprendre ici')) : null,
-        h(Composer, { sessionId: id, readOnly: session.readOnly, groupName: props.groupName, focusKey: props.focusKey })));
+          h('span', { style: { flex: 1 } }, state.desktop.ok
+            ? 'Session ' + (KC.sourceLabel(session.source) || 'Hermes') + ' : vos messages passent par le gateway local, comme dans Hermes Desktop.'
+            : 'Session tenue par ' + (KC.sourceLabel(session.source) || 'une autre surface') + ' : visible en lecture seule' + (state.desktop.error ? ' (' + state.desktop.error + ').' : '.')),
+          h(KLAI.Button, { variant: state.desktop.ok ? 'ghost' : 'secondary', size: 'sm', icon: 'branch', onClick: function () { api.fork(id); } }, state.desktop.ok ? 'Dériver' : 'Reprendre ici')) : null,
+        h(Composer, { sessionId: id, readOnly: session.readOnly && !state.desktop.ok, viaDesktop: session.readOnly && state.desktop.ok,
+          groupName: props.groupName, focusKey: props.focusKey })));
   }
 
   /* ---------------- Colonne Activité ---------------- */

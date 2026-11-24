@@ -23,6 +23,7 @@
     split: null,
     filter: 'all',
     toasts: [],
+    desktop: { ok: false },
     systemTheme: 'light'
   };
 
@@ -101,6 +102,10 @@
         });
       case 'approval': return patchLive(state, id, function (l) { l.approvals = l.approvals.concat([Object.assign({ at: Date.now(), runId: ev.runId || l.runId }, ev)]); });
       case 'clarify': return patchLive(state, id, function (l) { l.clarify = Object.assign({ runId: ev.runId || l.runId }, ev); });
+      case 'settled': return patchLive(state, id, function (l) {
+        if (ev.kind === 'clarify') { if (l.clarify && l.clarify.requestId === ev.requestId) l.clarify = null; }
+        else l.approvals = l.approvals.filter(function (x) { return x.requestId !== ev.requestId; });
+      });
       case 'done': return finalize(state, id, 'done', ev);
       case 'cancelled': return finalize(state, id, 'cancelled', ev);
       case 'error': {
@@ -121,6 +126,7 @@
       case 'settings': return Object.assign({}, state, { settings: a.settings });
       case 'info': return Object.assign({}, state, { info: a.info });
       case 'backend': return Object.assign({}, state, { backend: a.backend });
+      case 'desktop': return Object.assign({}, state, { desktop: a.value || { ok: false } });
       case 'systemTheme': return Object.assign({}, state, { systemTheme: a.value });
       case 'data': {
         var next = { loading: false };
@@ -136,6 +142,7 @@
         }
         if (a.projects) next.projects = a.projects;
         if (a.jobs) next.jobs = a.jobs;
+        if (a.local !== undefined) next.localStore = a.local;
         return Object.assign({}, state, next);
       }
       case 'loading': return Object.assign({}, state, { loading: a.value });
@@ -207,14 +214,16 @@
           dispatch({ type: 'backend', backend: backend });
           if (!backend.ok) { dispatch({ type: 'data', sessions: [], projects: [] }); return; }
         }
-        var res = await Promise.all([B.hermes.sessions({ limit: 200 }), full ? B.hermes.projects() : null, B.hermes.jobs()]);
+        var res = await Promise.all([B.hermes.sessions({ limit: 200, max: 1000 }), B.hermes.jobs(), B.hermes.localMeta()]);
         if (!res[0].ok) {
           dispatch({ type: 'backend', backend: { ok: false, error: res[0].error, status: res[0].status } });
           dispatch({ type: 'loading', value: false });
           return;
         }
-        jobs = res[2] && res[2].ok ? res[2].jobs : [];
-        dispatch({ type: 'data', sessions: res[0].sessions, projects: res[1] && res[1].ok ? res[1].projects : undefined, jobs: jobs });
+        jobs = res[1] && res[1].ok ? res[1].jobs : [];
+        if (full || !st.desktop.checked) B.hermes.desktopStatus().then(function (d) { dispatch({ type: 'desktop', value: Object.assign({ checked: true }, d) }); });
+        var local = res[2] && res[2].ok ? res[2] : null;
+        dispatch({ type: 'data', sessions: KC.enrichSessions(res[0].sessions, local), projects: local ? local.projects : [], jobs: jobs, local: !!local });
       }
 
       async function loadMessages(id, force) {
@@ -250,15 +259,21 @@
         dispatch({ type: 'append', id: id, message: { who: 'user', text: text, at: Date.now() } });
         dispatch({ type: 'markRead', id: id });
         var sess = stateRef.current.sessions.find(function (x) { return x.id === id; });
-        var r = await B.hermes.send({ sessionId: id, input: text, model: model || '', provider: model ? (provider || '') : '', cwd: sess && sess.workspace || '' });
+        var via = sess && sess.readOnly && stateRef.current.desktop.ok ? 'desktop' : 'api';
+        var r = await B.hermes.send({ sessionId: id, input: text, model: model || '', provider: model ? (provider || '') : '', cwd: sess && sess.workspace || '', via: via });
         if (r && r.ok === false && r.error && !r.readOnly && !r.cancelled) toast(r.error, 'error');
       }
 
       async function stop(id) { if (B) await B.hermes.stop({ sessionId: id }); }
 
+      function viaOf(id) {
+        var s = stateRef.current.sessions.find(function (x) { return x.id === id; });
+        return s && s.readOnly && stateRef.current.desktop.ok ? 'desktop' : 'api';
+      }
+
       async function approve(id, a, choice) {
         dispatch({ type: 'dropApproval', id: id, requestId: a.requestId });
-        var r = await B.hermes.approve({ sessionId: id, runId: a.runId, requestId: a.requestId, generation: a.generation, choice: choice });
+        var r = await B.hermes.approve({ sessionId: id, runId: a.runId, requestId: a.requestId, generation: a.generation, choice: choice, via: viaOf(id) });
         if (!r.ok) {
           toast('Approbation refusée par le gateway : ' + r.error, 'error');
           dispatch({ type: 'event', ev: Object.assign({}, a, { session: id, type: 'approval' }) });
@@ -270,7 +285,7 @@
 
       async function answer(id, c, text) {
         dispatch({ type: 'clearClarify', id: id });
-        var r = await B.hermes.clarify({ sessionId: id, runId: c.runId, requestId: c.requestId, generation: c.generation, answer: text });
+        var r = await B.hermes.clarify({ sessionId: id, runId: c.runId, requestId: c.requestId, generation: c.generation, answer: text, via: viaOf(id) });
         if (!r.ok) toast('Réponse non transmise : ' + r.error, 'error');
       }
 
@@ -328,7 +343,10 @@
           dispatch({ type: 'event', ev: ev });
           if (ev.type === 'end') refreshSoon(ev.session);
         }),
-        B.on('klai:settings', function (s) { dispatch({ type: 'settings', settings: s }); }),
+        B.on('klai:settings', function (s) {
+          dispatch({ type: 'settings', settings: s });
+          B.hermes.desktopStatus().then(function (d) { dispatch({ type: 'desktop', value: Object.assign({ checked: true }, d) }); });
+        }),
         B.on('klai:system-theme', function (t) { dispatch({ type: 'systemTheme', value: t }); })
       ];
       var refreshSoon = KC.debounce(function (sid) {

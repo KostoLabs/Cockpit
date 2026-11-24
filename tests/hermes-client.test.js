@@ -183,6 +183,28 @@ test('modèle + fournisseur envoyés avec le tour, verrou de session', async () 
   await gw.close();
 });
 
+test('pagination des sessions (has_more) et sessions de routine', async () => {
+  const gw = createFakeGateway({ key: '', pageLimit: 3 });
+  const port = await gw.listen(0);
+  const client = createHermesClient({ getConfig: () => ({ baseUrl: 'http://127.0.0.1:' + port }) });
+  const r = await client.sessions({ limit: 3 });
+  assert.equal(r.sessions.length, gw.sessions.length);
+  assert.ok(gw.log.filter((l) => l === 'GET /api/sessions').length >= 3, 'plusieurs pages lues');
+  assert.equal(r.sessions.find((s) => s.id === 'cron_j1_20261123').cron, true);
+  assert.equal(r.sessions.find((s) => s.id === 'koordo-recette').cron, false);
+  await gw.close();
+});
+
+test('catalogue de modèles au format Hermes : fournisseurs authentifiés seulement', async () => {
+  const { gw, client } = await setup();
+  const mo = await client.modelOptions();
+  assert.ok(!mo.models.some((m) => m.provider === 'xai'), 'fournisseur non authentifié écarté');
+  assert.equal(mo.models.find((m) => m.id === 'hermes-4-70b').providerName, 'Nous Portal');
+  assert.deepEqual(mo.current, { provider: 'nous', model: 'hermes-4-405b' });
+  assert.ok(gw.log.includes('GET /api/model/options'));
+  await gw.close();
+});
+
 test('mappings tolérants', () => {
   assert.equal(mapSession({ id: 'x', source: 'discord' }).readOnly, true);
   assert.equal(mapSession({ id: 'x' }).readOnly, false);

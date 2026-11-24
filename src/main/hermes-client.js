@@ -75,6 +75,8 @@ function mapSession(s) {
     attention: !!(s.attention || s.pending_approvals || s.status === 'waiting_for_approval'),
     parentId: s.parent_session_id || null,
     readOnly: readOnly,
+    cron: /^cron$/i.test(source) || !!s.cron_job_id || /^cron_/.test(String(s.session_id || s.id || '')),
+    hidden: !!s.hidden,
     cli: !!s.is_cli_session || /^(cli|tui)$/i.test(source),
     contextPct: Number(s.window_usage_percent || s.context_percent || 0),
     tokensIn: Number(s.input_tokens || 0),
@@ -231,13 +233,28 @@ function createHermesClient(opts) {
     };
   }
 
+  /* Liste paginée : l'API plafonne une page à 200 lignes (« has_more »). On lit jusqu'à
+   * `max` sessions ; les épinglées arrivent en plus de la fenêtre et sont dédupliquées. */
   async function sessions(params) {
     const p = Object.assign({ limit: 200 }, params || {});
-    const qs = Object.keys(p).filter(function (k) { return p[k] != null && p[k] !== ''; })
-      .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(p[k]); }).join('&');
-    const r = await json('GET', '/api/sessions' + (qs ? '?' + qs : ''));
-    if (!r.ok) return r;
-    return { ok: true, sessions: asList(r.data, ['sessions', 'data', 'items']).filter(Boolean).map(mapSession).filter(function (s) { return s.id; }) };
+    const max = Number(p.max || 1000);
+    delete p.max;
+    const seen = {};
+    const out = [];
+    let offset = 0;
+    for (let page = 0; page < 10; page++) {
+      const q = Object.assign({}, p, { offset: offset });
+      const qs = Object.keys(q).filter(function (k) { return q[k] != null && q[k] !== ''; })
+        .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(q[k]); }).join('&');
+      const r = await json('GET', '/api/sessions?' + qs);
+      if (!r.ok) { if (page === 0) return r; break; }
+      const rows = asList(r.data, ['sessions', 'data', 'items']).filter(Boolean).map(mapSession).filter(function (s) { return s.id; });
+      rows.forEach(function (s) { if (!seen[s.id]) { seen[s.id] = true; out.push(s); } });
+      const more = r.data && r.data.has_more === true;
+      offset += Number(p.limit) || 200;
+      if (!more || out.length >= max) break;
+    }
+    return { ok: true, sessions: out };
   }
 
   async function projects() {
@@ -485,11 +502,13 @@ function createHermesClient(opts) {
     }) };
   }
   async function modelOptions() {
-    const r = await json('GET', '/api/model/options');
+    // include_unconfigured=0 : seulement les fournisseurs authentifiés, comme le sélecteur de Desktop.
+    const r = await json('GET', '/api/model/options?include_unconfigured=0');
     if (!r.ok) return Object.assign(r, { models: [] });
     const d = r.data || {};
     const models = [];
     asList(d, ['providers', 'data']).forEach(function (p) {
+      if (p.authenticated === false) return;
       const slug = p.slug || p.id || p.provider || p.name || '';
       asList(p, ['models']).forEach(function (m) {
         const id = typeof m === 'string' ? m : (m.id || m.name);
@@ -497,7 +516,9 @@ function createHermesClient(opts) {
       });
     });
     const cur = d.current || d.selected || {};
-    return { ok: true, models: models, current: { provider: d.current_provider || cur.provider || '', model: d.current_model || cur.model || '' } };
+    return { ok: true, models: models, current: {
+      provider: d.current_provider || (typeof d.provider === 'string' ? d.provider : '') || cur.provider || '',
+      model: d.current_model || (typeof d.model === 'string' ? d.model : '') || cur.model || '' } };
   }
 
   /* Verrou du modèle sur une session (équivalent de « /model » dans la session).

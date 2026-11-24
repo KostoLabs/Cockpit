@@ -2,6 +2,32 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [1.1.0] — 2026-11-24 · Écrire dans les sessions Hermes Desktop
+
+### Ajouté
+- **Écriture dans les sessions d'Hermes Desktop, du CLI, du TUI et de la messagerie.** L'API server refuse d'écrire dans une session d'une autre surface ; le Cockpit passe désormais, pour ces sessions, par le gateway partagé comme Hermes Desktop : `hermes gateway attach --json` (ticket à usage unique), WebSocket locale `hermes-gateway-v1`, `session.resume` puis `prompt.submit` (`src/main/desktop-bridge.js`).
+  - Texte en continu, outils, raisonnement, sous-agents, fin de tour, erreurs : mêmes affichages que pour une session du Cockpit.
+  - Approbations et questions de l'agent (`approval.respond`, `clarify.respond`), arrêt du tour (`session.interrupt`), choix du modèle par tour (`model_override`).
+  - Un tour lancé depuis Hermes Desktop sur une session ouverte dans le Cockpit s'y affiche en direct.
+  - Disponible quand le gateway est sur ce Mac et que la commande `hermes` est trouvée (`~/.local/bin`, Homebrew, shell de connexion, ou chemin indiqué).
+- Réglages → **Hermes local** : lecture des projets, écriture Desktop, dossier Hermes, chemin de la commande `hermes`, état du pont.
+- Faux gateway partagé (`tests/fake-shared-gateway.js`) et faux `hermes gateway attach` ; 5 tests du pont (33 au total) ; étape e2e « session Desktop » avec approbation.
+
+### Modifié
+- Une session d'une autre surface n'est plus en lecture seule quand le pont est disponible : bandeau « vos messages passent par le gateway local », « Dériver » reste proposé.
+- Dépendance de développement `ws` 8.22.2 (tests uniquement).
+
+## [1.0.2] — 2026-11-24 · Retours du premier essai sur un vrai Hermes (0.23)
+
+### Corrigé
+- **Projets** : l'API server d'Hermes ne transmet ni le dossier ni le projet d'une session. Quand le gateway tourne sur la même machine, le Cockpit lit désormais en lecture seule `~/.hermes/projects.db` (projets nommés et leurs dossiers) et `~/.hermes/state.db` (dossier, racine Git et branche de chaque session), comme Hermes Desktop. Les sessions sont rattachées au projet dont un dossier les contient, sinon à leur dépôt Git ou à leur dossier ; « Sans dossier » passe en dernier. Réglages : `localStore` (`auto`, `on`, `off`) et `hermesHome`.
+- **Routines planifiées** (Sentry…) : les sessions de source `cron` sortent des projets et apparaissent dans *Tâches planifiées*, sous leur routine (« Voir les N exécutions »), ou dans « Autres exécutions planifiées ».
+- **« + N autres sessions »** déroule la liste dans la vue d'ensemble (25 de plus à chaque clic, « Réduire ») au lieu d'ouvrir la première session.
+- **Vue d'ensemble** : suppression des filets horizontaux absents de la maquette D′ et du tiret affiché quand un projet n'a pas de dossier.
+- **Choix du modèle** : fenêtre de sélection avec recherche, groupée par fournisseur, limitée aux fournisseurs authentifiés (`include_unconfigured=0`), modèle courant lu au format réel (`model`, `provider`). Dans une session en lecture seule, le bouton indique de passer par « Reprendre ici ».
+- **Sessions** : lecture paginée (`has_more`) au-delà de 200, jusqu'à 1 000.
+- Faux gateway aligné sur le format réel de l'API (clé `data`, `has_more`, catalogue de modèles), 28 tests, e2e avec un faux `~/.hermes`.
+
 ## [1.0.1] — 2026-11-23 · Fusion de Live (PR #1)
 
 Intègre `Live`, où la PR #1 (reprise parallèle du pilote dans `pilote.js`) avait été fusionnée. L'architecture de la 1.0.0 couvre déjà ses fonctions (approbations, jobs, création et dérivation de session, géométrie de fenêtre) ; `pilote.js` et `tests/test-pilote-hermes.js` sont retirés au profit de `src/main/hermes-client.js` et de ses tests. Apports de la PR #1 repris :

@@ -22,6 +22,8 @@
     var shown = groups.filter(keep[filter] || keep.all);
     var name = state.settings && state.settings.userName;
     var bk = state.backend;
+    var ex = React.useState({}), expanded = ex[0], setExpanded = ex[1];
+    function showMore(key, n) { var next = Object.assign({}, expanded); next[key] = n; setExpanded(next); }
 
     var head = h('div', { className: 'kc-head' },
       h('div', { className: 'kc-head-text' },
@@ -54,12 +56,13 @@
         shown.map(function (g, i) {
           var alert = g.errors ? { tone: 'danger', label: g.errors + ' erreur' + (g.errors > 1 ? 's' : '') }
             : g.attention ? { tone: 'attention', label: g.attention + ' élément' + (g.attention > 1 ? 's' : '') + ' à traiter' } : null;
-          return h('section', { key: g.key, className: 'kc-index-item', style: i === 0 ? { borderTop: '1px solid var(--rule)' } : { borderTop: '1px solid var(--line)' } },
+          var shownCount = expanded[g.key] || 3;
+          return h('section', { key: g.key, className: 'kc-index-item' },
             h('div', { className: 'kc-index-num' }, g.num),
             h('div', { className: 'kc-index-id' },
               h('h2', { className: 'kc-h2' }, h('a', { href: '#', style: { color: 'var(--ink)', textDecoration: 'none' },
                 onClick: function (e) { e.preventDefault(); api.open(g.sessions[0].id); } }, g.name)),
-              h('div', { className: 'kc-index-path kc-ellipsis', title: g.path }, KC.shortPath(g.path) || '—'),
+              g.path ? h('div', { className: 'kc-index-path kc-ellipsis', title: g.path }, KC.shortPath(g.path)) : null,
               h('div', { className: 'kc-meta', style: { marginTop: 'var(--space-2)' } },
                 g.sessions.length + ' session' + (g.sessions.length > 1 ? 's' : '') + (g.last ? ' · ' + KC.fmtAgo(g.last) : '')),
               alert ? h('div', { style: { fontSize: '12px', color: 'var(--' + alert.tone + ')' } }, alert.label) : null,
@@ -67,7 +70,7 @@
                 h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'plus', onClick: function () { api.newSession(g); } }, 'Session'),
                 h(KLAI.Button, { variant: 'ghost', size: 'sm', iconRight: 'steer', onClick: function () { api.open(g.sessions[0].id); } }, 'Ouvrir'))),
             h('div', { className: 'kc-index-sessions' },
-              g.sessions.slice(0, 3).map(function (s) {
+              g.sessions.slice(0, shownCount).map(function (s) {
                 var st = KC.sessionState(s, state.live[s.id]);
                 return h('button', { key: s.id, type: 'button', className: 'kc-plain kc-sess-row',
                   onClick: function () { api.open(s.id); }, onContextMenu: function (e) { ov.menu(e, KC.sessionMenu(ov, api, s)); } },
@@ -75,8 +78,11 @@
                   h('span', { className: 'kc-sess-step kc-ellipsis' }, st.step),
                   h(KLAI.StatusChip, { status: st.status, label: st.label }));
               }),
-              g.sessions.length > 3 ? h('button', { type: 'button', className: 'kc-link', style: { padding: '10px 0', textAlign: 'left' },
-                onClick: function () { api.open(g.sessions[0].id); } }, '+ ' + (g.sessions.length - 3) + ' autres sessions') : null));
+              h('div', { style: { display: 'flex', gap: 'var(--space-4)', padding: '10px 0' } },
+                g.sessions.length > shownCount ? h('button', { type: 'button', className: 'kc-link',
+                  onClick: function () { showMore(g.key, shownCount + 25); } },
+                  shownCount === 3 ? '+ ' + (g.sessions.length - 3) + ' autres sessions' : 'Afficher 25 de plus (' + (g.sessions.length - shownCount) + ' restantes)') : null,
+                shownCount > 3 ? h('button', { type: 'button', className: 'kc-link', onClick: function () { showMore(g.key, 3); } }, 'Réduire') : null)));
         }));
     }
 

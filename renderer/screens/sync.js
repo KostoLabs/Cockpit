@@ -144,7 +144,7 @@
       return api.saveSettings(next).then(function () { setTok(''); api.toast('Synchro enregistrée.'); });
     }
     return h('section', { className: 'kc-section' },
-      h(KLAI.Overline, { label: '03 — Synchro des sessions (ctx_handover)', as: 'h2' }),
+      h(KLAI.Overline, { label: '04 — Synchro des sessions (ctx_handover)', as: 'h2' }),
       h('label', { className: 'kc-toggle' }, h('input', { type: 'checkbox', checked: !!draft.enabled, onChange: function (e) { set('enabled', e.target.checked); } }), 'Activer la synchro avec un master'),
       h('div', { className: 'kc-field' }, h('span', null, 'Transport'),
         h(KLAI.Segmented, { value: draft.transport || 'http', onChange: function (v) { set('transport', v); }, label: 'Transport', options: [{ value: 'http', label: 'Serveur HTTP' }, { value: 'ssh', label: 'SSH' }] })),

@@ -64,7 +64,13 @@ Le Cockpit parle au **gateway Hermes** (son API server).
 
 3. Dans le Cockpit, ouvrez les réglages (**⌘,**), renseignez l'URL (`http://127.0.0.1:8642` par défaut) et la clé, puis **Tester la connexion**. La clé est rangée dans le trousseau macOS.
 
-Le Cockpit affiche les sessions de toutes les surfaces Hermes : CLI, TUI, Hermes Desktop, Telegram, Discord… Celles ouvertes ailleurs sont en lecture seule (Hermes n'autorise qu'un client à écrire dans une session) ; **Reprendre ici** les dérive dans le Cockpit.
+Le Cockpit affiche les sessions de toutes les surfaces Hermes : CLI, TUI, Hermes Desktop, Telegram, Discord…
+
+Quand le gateway tourne sur le même Mac, le Cockpit :
+- lit vos **projets** et le dossier de chaque session dans `~/.hermes` (lecture seule), comme Hermes Desktop ;
+- **écrit dans les sessions Hermes Desktop**, CLI et messagerie en passant par le gateway partagé (`hermes gateway attach`), avec approbations, arrêt et choix du modèle.
+
+Ces deux fonctions se règlent dans Réglages → *Hermes local* (dossier Hermes, chemin de la commande `hermes`). Avec un gateway distant, les sessions des autres surfaces restent en lecture seule ; **Reprendre ici** les dérive dans le Cockpit.
 
 ---
 
