@@ -21,6 +21,11 @@ const { createFakeGateway } = require('../fake-gateway');
   fs.writeFileSync(path.join(repo, 'README.md'), '# Koordo\n\nRecette preprod.\n');
   fs.writeFileSync(path.join(repo, 'rapport-recette.md'), '# Rapport\n12 tests, 2 échecs.\n');
   const gw = createFakeGateway({ key: 'smoke-key', tick: 30, hideCwd: true, remap: { '/Users/q/Developer/koordo': repo } });
+  // Faux gateway partagé (WebSocket) et faux « hermes gateway attach » pour les sessions Desktop.
+  const { createFakeSharedGateway, tmpDir } = require('../fake-shared-gateway');
+  const shared = createFakeSharedGateway({ tick: 40 });
+  await shared.listen();
+  const hermesBin = shared.makeHermesBin(tmpDir());
   // Faux ~/.hermes : projets nommés (projects.db) et dossiers des sessions (state.db), comme Hermes Desktop.
   const hermesHome = fs.mkdtempSync(path.join(os.tmpdir(), 'klai-hermes-home-'));
   const { DatabaseSync } = require('node:sqlite');
@@ -58,7 +63,7 @@ const { createFakeGateway } = require('../fake-gateway');
     syncCfg = { sync: { enabled: true, transport: 'http', masterUrl: 'http://127.0.0.1:' + mport, device: 'studio' } };
   }
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({
-    hermesBaseUrl: 'http://127.0.0.1:' + port, userName: 'Quentin', ...syncCfg,
+    hermesBaseUrl: 'http://127.0.0.1:' + port, userName: 'Quentin', hermesBin: hermesBin, ...syncCfg,
     secrets: { hermesApiKey: 'raw:' + Buffer.from('smoke-key').toString('base64'), syncToken: 'raw:' + Buffer.from('tok').toString('base64') }
   }));
   const root = process.env.SMOKE_APP || path.join(__dirname, '..', '..');
@@ -102,6 +107,21 @@ const { createFakeGateway } = require('../fake-gateway');
       await win.waitForSelector('text=rapport-recette.md', { timeout: 10000 });
       await win.screenshot({ path: path.join(outDir, '05-revue.png') });
       console.log('ok revue git');
+    }
+    if (steps.includes('desktop')) {
+      // « Proposer une organisation » appartient au CLI : l'API la refuse, le pont Desktop l'accepte.
+      await win.evaluate(() => window.__klaiNavigate('overview'));
+      await win.click('text=Proposer une organisation');
+      await win.waitForSelector('text=vos messages passent par le gateway local', { timeout: 10000 });
+      await win.fill('textarea', 'approuve et pousse');
+      await win.keyboard.press('Enter');
+      await win.waitForSelector('text=git push', { timeout: 10000 });
+      await win.screenshot({ path: path.join(outDir, '10-desktop-approbation.png') });
+      await win.click('button:has-text("Approuver")');
+      await win.waitForSelector('text=Depuis Desktop', { timeout: 10000 });
+      await win.screenshot({ path: path.join(outDir, '11-desktop-reponse.png') });
+      if (!shared.log.includes('approval.respond')) throw new Error('approbation non transmise au gateway partagé');
+      console.log('ok écriture dans une session Desktop');
     }
     if (steps.includes('jobs')) {
       await win.evaluate(() => window.__klaiNavigate('jobs'));
@@ -151,5 +171,6 @@ const { createFakeGateway } = require('../fake-gateway');
   await app.close();
   await gw.close();
   if (master) master.kill();
+  await shared.close();
   console.log('captures dans', outDir);
 })();

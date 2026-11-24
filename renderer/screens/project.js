@@ -87,7 +87,7 @@
       it.text ? h('div', { className: 'kc-answer-meta' },
         h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'copy', iconOnly: true, label: 'Copier',
           onClick: function () { navigator.clipboard.writeText(it.text); api.toast('Réponse copiée.'); } }),
-        props.readOnly ? null : h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'branch', iconOnly: true, label: 'Créer une branche', onClick: function () { api.fork(props.sessionId); } }),
+        h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'branch', iconOnly: true, label: 'Créer une branche', onClick: function () { api.fork(props.sessionId); } }),
         props.onRegenerate ? h(KLAI.Button, { variant: 'ghost', size: 'sm', icon: 'refresh', iconOnly: true, label: 'Régénérer', onClick: props.onRegenerate }) : null,
         h('span', { className: 'kc-stamp' }, [KC.fmtStamp(it.at), it.model].filter(Boolean).join(' · '))) : null);
   }
@@ -254,6 +254,7 @@
     }
 
     var placeholder = ro ? 'Lecture seule : session tenue par une autre surface Hermes.'
+      : props.viaDesktop && !busy && !offline ? 'Écrivez dans cette session Hermes Desktop' + (props.groupName ? ' (' + props.groupName + ')' : '') + '…'
       : offline ? 'Gateway injoignable.'
       : busy ? 'Hermes travaille… (Arrêter avec ⌘.)'
       : 'Donnez une tâche à Hermes' + (props.groupName ? ' dans ' + props.groupName : '') + '…';
@@ -283,7 +284,7 @@
         h(KLAI.Button, { variant: 'ghost', size: 'sm', iconRight: 'chevron', disabled: ro, onClick: function () { setPicking(true); },
           title: ro ? 'Session en lecture seule : « Reprendre ici » pour écrire et choisir le modèle' : 'Modèle de cette session' },
           model ? (models.find(function (m) { return m.id === model; }) || { label: model }).label : 'Modèle par défaut'),
-        picking ? h(ModelPicker, { models: models, model: model, provider: provider, onPick: choose, onLock: ro ? null : lockModel,
+        picking ? h(ModelPicker, { models: models, model: model, provider: provider, onPick: choose, onLock: ro || props.viaDesktop ? null : lockModel,
           defaultLabel: state.backend && state.backend.models && state.backend.models[0], onClose: function () { setPicking(false); } }) : null,
         h('div', { style: { flex: 1 } }),
         busy
@@ -339,12 +340,12 @@
           h('div', { className: 'kc-col' },
             messages === undefined ? h('div', { className: 'kc-notice' }, 'Chargement de l’historique…') : null,
             messages && items.length === 0 && !lv.busy ? h('div', { className: 'kc-blank', style: { padding: '24px 0' } },
-              h(KLAI.Overline, { label: session.readOnly ? 'Session en lecture seule' : 'Nouvelle session', as: 'div' }),
+              h(KLAI.Overline, { label: session.readOnly && !state.desktop.ok ? 'Session en lecture seule' : 'Nouvelle session', as: 'div' }),
               h('p', null, session.readOnly ? 'Cette session appartient à une autre surface Hermes ; dérivez-la pour continuer ici.' : 'Donnez une première tâche à Hermes dans le composer ci-dessous.')) : null,
             items.map(function (it, i) {
               if (it.kind === 'user') return h('div', { key: it.key, ref: function (n) { userRefs.current[it.key] = n; }, className: 'kc-bubble' }, it.text);
               return h(Answer, { key: it.key, item: it, sessionId: id, readOnly: session.readOnly,
-                onRegenerate: i === lastAnswerIdx && lastUser && !session.readOnly && !lv.busy ? function () { api.send(id, lastUser); } : null });
+                onRegenerate: i === lastAnswerIdx && lastUser && (!session.readOnly || state.desktop.ok) && !lv.busy ? function () { api.send(id, lastUser); } : null });
             }),
             lv.busy ? h('div', { className: 'kc-answer' },
               h(ToolList, { tools: lv.tools, open: true }),
@@ -359,9 +360,12 @@
       h('div', { className: 'kc-bottom' },
         running.map(function (w, i) { return h(SubagentBar, { key: i, worker: w, sessionId: id }); }),
         session.readOnly ? h('div', { className: 'kc-ro-note' },
-          h('span', { style: { flex: 1 } }, 'Session tenue par ' + (KC.sourceLabel(session.source) || 'une autre surface') + ' : visible en lecture seule.'),
-          h(KLAI.Button, { variant: 'secondary', size: 'sm', icon: 'branch', onClick: function () { api.fork(id); } }, 'Reprendre ici')) : null,
-        h(Composer, { sessionId: id, readOnly: session.readOnly, groupName: props.groupName, focusKey: props.focusKey })));
+          h('span', { style: { flex: 1 } }, state.desktop.ok
+            ? 'Session ' + (KC.sourceLabel(session.source) || 'Hermes') + ' : vos messages passent par le gateway local, comme dans Hermes Desktop.'
+            : 'Session tenue par ' + (KC.sourceLabel(session.source) || 'une autre surface') + ' : visible en lecture seule' + (state.desktop.error ? ' (' + state.desktop.error + ').' : '.')),
+          h(KLAI.Button, { variant: state.desktop.ok ? 'ghost' : 'secondary', size: 'sm', icon: 'branch', onClick: function () { api.fork(id); } }, state.desktop.ok ? 'Dériver' : 'Reprendre ici')) : null,
+        h(Composer, { sessionId: id, readOnly: session.readOnly && !state.desktop.ok, viaDesktop: session.readOnly && state.desktop.ok,
+          groupName: props.groupName, focusKey: props.focusKey })));
   }
 
   /* ---------------- Colonne Activité ---------------- */

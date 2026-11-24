@@ -2,6 +2,21 @@
 
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions sémantiques. Chaque version est taguée `vX.Y.Z` dans git.
 
+## [1.1.0] — 2026-11-24 · Écrire dans les sessions Hermes Desktop
+
+### Ajouté
+- **Écriture dans les sessions d'Hermes Desktop, du CLI, du TUI et de la messagerie.** L'API server refuse d'écrire dans une session d'une autre surface ; le Cockpit passe désormais, pour ces sessions, par le gateway partagé comme Hermes Desktop : `hermes gateway attach --json` (ticket à usage unique), WebSocket locale `hermes-gateway-v1`, `session.resume` puis `prompt.submit` (`src/main/desktop-bridge.js`).
+  - Texte en continu, outils, raisonnement, sous-agents, fin de tour, erreurs : mêmes affichages que pour une session du Cockpit.
+  - Approbations et questions de l'agent (`approval.respond`, `clarify.respond`), arrêt du tour (`session.interrupt`), choix du modèle par tour (`model_override`).
+  - Un tour lancé depuis Hermes Desktop sur une session ouverte dans le Cockpit s'y affiche en direct.
+  - Disponible quand le gateway est sur ce Mac et que la commande `hermes` est trouvée (`~/.local/bin`, Homebrew, shell de connexion, ou chemin indiqué).
+- Réglages → **Hermes local** : lecture des projets, écriture Desktop, dossier Hermes, chemin de la commande `hermes`, état du pont.
+- Faux gateway partagé (`tests/fake-shared-gateway.js`) et faux `hermes gateway attach` ; 5 tests du pont (34 au total) ; étape e2e « session Desktop » avec approbation.
+
+### Modifié
+- Une session d'une autre surface n'est plus en lecture seule quand le pont est disponible : bandeau « vos messages passent par le gateway local », « Dériver » reste proposé.
+- Dépendance de développement `ws` 8.22.2 (tests uniquement).
+
 ## [1.0.2] — 2026-11-24 · Retours du premier essai sur un vrai Hermes (0.23)
 
 ### Corrigé

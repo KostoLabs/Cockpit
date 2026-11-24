@@ -13,6 +13,8 @@ const DEFAULTS = {
   provider: '',
   hermesHome: '',
   localStore: 'auto',
+  hermesBin: '',
+  desktopBridge: 'auto',
   theme: 'light',
   userName: '',
   pollSeconds: 15,

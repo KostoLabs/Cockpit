@@ -5,6 +5,7 @@ const { createSettingsStore } = require('./src/main/settings');
 const { createHermesClient } = require('./src/main/hermes-client');
 const extensions = require('./src/main/extensions');
 const localStore = require('./src/main/local-store');
+const { createDesktopBridge } = require('./src/main/desktop-bridge');
 
 const isDev = process.argv.includes('--dev');
 // Dossier de données isolé (tests e2e, profils multiples) : KLAI_USER_DATA=/chemin
@@ -13,6 +14,7 @@ const windows = new Set();
 let mainWin = null;
 let settings = null;
 let hermes = null;
+let desktop = null; // sessions Desktop / CLI / messagerie via le gateway partagé (WebSocket)
 
 /* ============================ Diffusion vers les fenêtres ============================ */
 
@@ -32,13 +34,15 @@ async function startTurn(arg) {
   const input = String(arg.input || '').trim();
   if (!sessionId || !input) return { ok: false, error: 'session ou message manquant' };
   if (turns.has(sessionId)) return { ok: false, error: 'Un tour est déjà en cours dans cette session.' };
-  const entry = { ctrl: new AbortController(), runId: null };
+  const via = arg.via === 'desktop' ? 'desktop' : 'api';
+  const entry = { ctrl: new AbortController(), runId: null, via: via };
   turns.set(sessionId, entry);
   broadcast('klai:hermes:event', { session: sessionId, type: 'start' });
   // Instantané Git pour la portée « Dernier tour » de la revue (dossier local seulement).
   if (arg.cwd) { try { await extensions.git.snapshot(sessionId, String(arg.cwd)); } catch { /* hors Git */ } }
   try {
-    return await hermes.runTurn({
+    const client = via === 'desktop' ? desktop : hermes;
+    return await client.runTurn({
       sessionId: sessionId,
       input: input,
       model: arg.model || settings.all().model || '',
@@ -58,6 +62,10 @@ async function startTurn(arg) {
 async function stopTurn(arg) {
   const entry = turns.get(String(arg.sessionId || ''));
   if (!entry) return { ok: true };
+  if (entry.via === 'desktop') {
+    try { await desktop.interrupt(String(arg.sessionId)); return { ok: true }; }
+    catch (err) { entry.ctrl.abort(); return { ok: false, error: err.message }; }
+  }
   if (entry.runId) {
     const r = await hermes.stop(entry.runId);
     // Filet de sécurité : si le run ne s'arrête pas, on coupe le flux local.
@@ -90,8 +98,27 @@ const HERMES_METHODS = {
   send: (arg) => startTurn(arg || {}),
   stop: (arg) => stopTurn(arg || {}),
   steer: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.steer(id, String(arg.text || '')) : { ok: false, error: 'aucun run actif' }; },
-  approve: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.approve(id, arg) : { ok: false, error: 'aucun run actif' }; },
-  clarify: (arg) => { const id = runIdFor(arg || {}); return id ? hermes.clarify(id, arg) : { ok: false, error: 'aucun run actif' }; },
+  approve: (arg) => {
+    arg = arg || {};
+    if (arg.via === 'desktop' || (desktop && desktop.owns(String(arg.sessionId || '')))) {
+      return desktop.approve(String(arg.sessionId), arg).then((r) => Object.assign({ ok: true }, r), (err) => ({ ok: false, error: err.message }));
+    }
+    const id = runIdFor(arg); return id ? hermes.approve(id, arg) : { ok: false, error: 'aucun run actif' };
+  },
+  clarify: (arg) => {
+    arg = arg || {};
+    if (arg.via === 'desktop' || (desktop && desktop.owns(String(arg.sessionId || '')))) {
+      return desktop.clarify(String(arg.sessionId), arg).then((r) => Object.assign({ ok: true }, r), (err) => ({ ok: false, error: err.message }));
+    }
+    const id = runIdFor(arg); return id ? hermes.clarify(id, arg) : { ok: false, error: 'aucun run actif' };
+  },
+  // Pont vers les sessions Desktop : disponible si le gateway est local et « hermes » trouvé.
+  desktopStatus: async () => {
+    const s = settings.all();
+    if (s.desktopBridge === 'off') return { ok: false, error: 'désactivé dans les réglages' };
+    if (!localStore.isLocalUrl(s.hermesBaseUrl)) return { ok: false, error: 'gateway distant' };
+    return desktop.status();
+  },
   run: (id) => hermes.run(String(id)),
   activeTurns: () => Array.from(turns.entries()).map(([s, e]) => ({ session: s, runId: e.runId })),
   jobs: () => hermes.jobs(),
@@ -311,6 +338,13 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     app.setAboutPanelOptions({ applicationName: 'KostoLabs AI Cockpit', applicationVersion: app.getVersion(), copyright: '© KostoLabs Company' });
     settings = createSettingsStore({ file: path.join(app.getPath('userData'), 'settings.json'), safeStorage: safeStorage });
+    desktop = createDesktopBridge({
+      getSettings: () => settings.all(),
+      version: app.getVersion(),
+      // Activité d'une session Desktop suivie par le Cockpit mais lancée ailleurs (Hermes Desktop, CLI…).
+      onEvent: (ev) => broadcast('klai:hermes:event', ev),
+      log: (m) => { if (isDev) console.log('[desktop]', m); }
+    });
     hermes = createHermesClient({
       getConfig: () => {
         const s = settings.all();
@@ -327,5 +361,5 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('before-quit', () => { for (const e of turns.values()) e.ctrl.abort(); extensions.shutdown(); });
+  app.on('before-quit', () => { for (const e of turns.values()) e.ctrl.abort(); if (desktop) desktop.close(); extensions.shutdown(); });
 }
